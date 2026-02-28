@@ -29,7 +29,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 src/
 ├── main.rs        # CLI定義（clap derive）
 ├── cron.rs        # cron式 → OnCalendar変換
-├── unit.rs        # .service/.timer ファイル生成
+├── unit.rs        # .service/.timer ファイル生成（タイマー + 常駐サービス）
 ├── systemctl.rs   # systemctl --user ラッパー
 ├── init.rs        # sdtab init
 ├── add.rs         # sdtab add
