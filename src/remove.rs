@@ -16,8 +16,10 @@ pub fn run(name: &str) -> Result<()> {
         bail!("'{}' not found.", name);
     }
 
+    let is_timer = timer_path.exists();
+
     // Stop and disable: timer if exists, otherwise service
-    if timer_path.exists() {
+    if is_timer {
         let timer_unit = unit::timer_filename(name);
         if let Err(e) = systemctl::stop_and_disable(&timer_unit) {
             eprintln!("Warning: failed to disable timer: {}", e);
@@ -42,7 +44,8 @@ pub fn run(name: &str) -> Result<()> {
     // Reload daemon
     systemctl::daemon_reload()?;
 
-    println!("'{}' has been removed.", name);
+    let unit_type = if is_timer { "Timer" } else { "Service" };
+    println!("{} '{}' has been removed.", unit_type, name);
 
     Ok(())
 }
