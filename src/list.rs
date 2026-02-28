@@ -54,7 +54,7 @@ pub fn run() -> Result<()> {
                 let service_unit = format!("sdtab-{}.service", name);
                 let active_state = systemctl::show_property(&service_unit, "ActiveState")
                     .unwrap_or_else(|_| "unknown".to_string());
-                (EntryType::Service, "-".to_string(), active_state)
+                (EntryType::Service, "@service".to_string(), active_state)
             }
             EntryType::Timer => {
                 let timer_unit = format!("sdtab-{}.timer", name);
@@ -143,7 +143,6 @@ fn parse_service_metadata(content: &str) -> ServiceMetadata {
     let mut unit_type = EntryType::Timer; // default for backward compat
     let mut cron_expr = "?".to_string();
     let mut command = "?".to_string();
-    let mut has_cron = false;
 
     for line in content.lines() {
         if line.starts_with("# sdtab:type=service") {
@@ -153,16 +152,10 @@ fn parse_service_metadata(content: &str) -> ServiceMetadata {
         }
         if let Some(cron) = line.strip_prefix("# sdtab:cron=") {
             cron_expr = cron.to_string();
-            has_cron = true;
         }
         if let Some(cmd) = line.strip_prefix("ExecStart=") {
             command = cmd.to_string();
         }
-    }
-
-    // Backward compatibility: if no type= line but has cron= → timer
-    if has_cron {
-        // Already defaults to Timer, no change needed
     }
 
     ServiceMetadata {

@@ -31,11 +31,14 @@ fn run_timer(
     let parsed = cron::parse(schedule)?;
     let name = name.unwrap_or_else(|| unit::derive_name(command));
 
+    // Check for existing unit
     let unit_dir = init::unit_dir()?;
+    let service_path = Path::new(&unit_dir).join(unit::service_filename(&name));
     let timer_path = Path::new(&unit_dir).join(unit::timer_filename(&name));
-    if timer_path.exists() {
+
+    if service_path.exists() || timer_path.exists() {
         bail!(
-            "Timer '{}' already exists. Remove it first with: sdtab remove {}",
+            "Unit '{}' already exists. Remove it first with: sdtab remove {}",
             name,
             name
         );
@@ -44,13 +47,16 @@ fn run_timer(
     let workdir = resolve_workdir(workdir)?;
     let description = description.unwrap_or_else(|| command.to_string());
 
+    // Get display schedule for user-friendly output
+    let display_schedule = parsed.display.clone().unwrap_or_else(|| schedule.to_string());
+
     let config = unit::UnitConfig {
         name: name.clone(),
         command: command.to_string(),
         workdir,
         description,
         unit_type: unit::UnitType::Timer,
-        cron_expr: Some(schedule.to_string()),
+        cron_expr: Some(display_schedule.clone()),
         schedule: Some(parsed),
         restart_policy: None,
         env_file: None,
@@ -62,10 +68,10 @@ fn run_timer(
     let service_path = Path::new(&unit_dir).join(unit::service_filename(&name));
     fs::write(&service_path, &service_content)
         .with_context(|| format!("Failed to write {}", service_path.display()))?;
+    println!("Created: {}", service_path.display());
+
     fs::write(&timer_path, &timer_content)
         .with_context(|| format!("Failed to write {}", timer_path.display()))?;
-
-    println!("Created: {}", service_path.display());
     println!("Created: {}", timer_path.display());
 
     systemctl::daemon_reload()?;
@@ -73,7 +79,7 @@ fn run_timer(
     systemctl::enable_and_start(&timer_unit)?;
 
     println!("Timer '{}' is now active.", name);
-    println!("  Schedule: {}", schedule);
+    println!("  Schedule: {}", display_schedule);
     println!("  Command:  {}", command);
 
     Ok(())

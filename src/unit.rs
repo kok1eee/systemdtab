@@ -191,6 +191,8 @@ mod tests {
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
                 on_boot_sec: None,
+                is_service: false,
+                display: None,
             }),
             restart_policy: None,
             env_file: None,
@@ -202,6 +204,7 @@ mod tests {
         assert!(service.contains("Description=[sdtab] report: daily report"));
         assert!(service.contains("ExecStart=uv run ./report.py"));
         assert!(service.contains("WorkingDirectory=/home/user/project"));
+        assert!(service.contains("Type=oneshot"));
     }
 
     #[test]
@@ -216,6 +219,8 @@ mod tests {
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
                 on_boot_sec: None,
+                is_service: false,
+                display: None,
             }),
             restart_policy: None,
             env_file: None,
@@ -239,6 +244,8 @@ mod tests {
             schedule: Some(CronSchedule {
                 on_calendar: None,
                 on_boot_sec: Some("1min".to_string()),
+                is_service: false,
+                display: None,
             }),
             restart_policy: None,
             env_file: None,
