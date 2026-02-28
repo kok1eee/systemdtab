@@ -6,6 +6,24 @@ use anyhow::{bail, Context, Result};
 use crate::{cron, init, systemctl, unit};
 
 pub fn run(
+    schedule: Option<&str>,
+    command: &str,
+    service: bool,
+    name: Option<String>,
+    workdir: Option<String>,
+    description: Option<String>,
+    env_file: Option<String>,
+    restart: Option<String>,
+) -> Result<()> {
+    if service {
+        run_service(command, name, workdir, description, env_file, restart)
+    } else {
+        let schedule = schedule.expect("schedule is required for timers");
+        run_timer(schedule, command, name, workdir, description)
+    }
+}
+
+fn run_timer(
     schedule: &str,
     command: &str,
     name: Option<String>,
@@ -30,14 +48,7 @@ pub fn run(
     }
 
     // 4. Determine working directory
-    let workdir = match workdir {
-        Some(w) => w,
-        None => std::env::current_dir()
-            .context("Failed to get current directory")?
-            .to_string_lossy()
-            .to_string(),
-    };
-
+    let workdir = resolve_workdir(workdir)?;
     let description = description.unwrap_or_else(|| command.to_string());
 
     // 5. Generate unit files
@@ -46,8 +57,11 @@ pub fn run(
         command: command.to_string(),
         workdir,
         description,
-        cron_expr: schedule.to_string(),
-        schedule: parsed,
+        unit_type: unit::UnitType::Timer,
+        cron_expr: Some(schedule.to_string()),
+        schedule: Some(parsed),
+        restart_policy: None,
+        env_file: None,
     };
 
     let service_content = unit::generate_service(&config);
@@ -73,4 +87,95 @@ pub fn run(
     println!("  Command:  {}", command);
 
     Ok(())
+}
+
+fn run_service(
+    command: &str,
+    name: Option<String>,
+    workdir: Option<String>,
+    description: Option<String>,
+    env_file: Option<String>,
+    restart: Option<String>,
+) -> Result<()> {
+    // 1. Validate restart policy
+    if let Some(ref r) = restart {
+        match r.as_str() {
+            "always" | "on-failure" | "no" => {}
+            _ => bail!(
+                "Invalid restart policy '{}'. Must be one of: always, on-failure, no",
+                r
+            ),
+        }
+    }
+
+    // 2. Validate env-file exists
+    if let Some(ref path) = env_file {
+        if !Path::new(path).exists() {
+            bail!("Environment file not found: {}", path);
+        }
+    }
+
+    // 3. Determine name
+    let name = name.unwrap_or_else(|| unit::derive_name(command));
+
+    // 4. Check for existing service
+    let unit_dir = init::unit_dir()?;
+    let service_path = Path::new(&unit_dir).join(unit::service_filename(&name));
+    if service_path.exists() {
+        bail!(
+            "Service '{}' already exists. Remove it first with: sdtab remove {}",
+            name,
+            name
+        );
+    }
+
+    // 5. Determine working directory
+    let workdir = resolve_workdir(workdir)?;
+    let description = description.unwrap_or_else(|| command.to_string());
+
+    // 6. Generate service file
+    let config = unit::UnitConfig {
+        name: name.clone(),
+        command: command.to_string(),
+        workdir,
+        description,
+        unit_type: unit::UnitType::Service,
+        cron_expr: None,
+        schedule: None,
+        restart_policy: restart.clone(),
+        env_file: env_file.clone(),
+    };
+
+    let service_content = unit::generate_daemon_service(&config);
+
+    // 7. Write service file (no .timer)
+    fs::write(&service_path, &service_content)
+        .with_context(|| format!("Failed to write {}", service_path.display()))?;
+
+    println!("Created: {}", service_path.display());
+
+    // 8. Reload and enable
+    systemctl::daemon_reload()?;
+    let service_unit = unit::service_filename(&name);
+    systemctl::enable_and_start(&service_unit)?;
+
+    let restart_display = restart.as_deref().unwrap_or("always");
+    println!("Service '{}' is now active.", name);
+    println!("  Command: {}", command);
+    println!("  Restart: {}", restart_display);
+    if let Some(ref ef) = env_file {
+        println!("  EnvFile: {}", ef);
+    }
+
+    Ok(())
+}
+
+fn resolve_workdir(workdir: Option<String>) -> Result<String> {
+    match workdir {
+        Some(w) => Ok(w),
+        None => Ok(std::env::current_dir()
+            .context("Failed to get current directory")?
+            .to_string_lossy()
+            .to_string()),
+    }
 }

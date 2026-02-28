@@ -1,6 +1,6 @@
 # systemdtab (sdtab)
 
-systemd timer を crontab のように簡単に管理する Rust CLI ツール。
+systemd timer と常駐サービスを crontab のように簡単に管理する Rust CLI ツール。
 
 ## コマンド
 
@@ -8,8 +8,20 @@ systemd timer を crontab のように簡単に管理する Rust CLI ツール�
 |---------|------|
 | `sdtab init` | linger 有効化 + ディレクトリ作成 |
 | `sdtab add "<schedule>" "<command>"` | タイマー追加 |
-| `sdtab list` | 管理中タイマー一覧 |
-| `sdtab remove <name>` | タイマー削除 |
+| `sdtab add --service "<command>"` | 常駐サービス追加 |
+| `sdtab list` | 管理中タイマー・サービス一覧 |
+| `sdtab remove <name>` | タイマー・サービス削除 |
+
+### add オプション
+
+| オプション | 説明 |
+|-----------|------|
+| `--service` | 常駐サービスとして登録（タイマーではなく） |
+| `--name <name>` | ユニット名（省略時はコマンドから自動生成） |
+| `--workdir <path>` | 作業ディレクトリ（省略時はカレントディレクトリ） |
+| `--description <text>` | 説明文 |
+| `--env-file <path>` | 環境変数ファイル（サービスのみ） |
+| `--restart <policy>` | リスタートポリシー: `always`/`on-failure`/`no`（サービスのみ、デフォルト: `always`） |
 
 ## アーキテクチャ
 
@@ -29,7 +41,7 @@ src/
 
 - ユーザーレベルタイマー（`--user`）のみ。システムレベルは対象外
 - 管理ユニットには `sdtab-` プレフィックスを付与
-- 元の cron 式は `.service` ファイルのコメント（`# sdtab:cron=...`）に保存
+- メタデータは `.service` ファイルのコメントに保存（`# sdtab:type=`, `# sdtab:cron=`, `# sdtab:restart=`）
 - cron パーサーは自前実装（依存最小化）
 - 依存: `clap` + `anyhow` のみ
 
