@@ -8,7 +8,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 |---------|------|
 | `sdtab init` | linger 有効化 + ディレクトリ作成 |
 | `sdtab add "<schedule>" "<command>"` | タイマー追加 |
-| `sdtab add --service "<command>"` | 常駐サービス追加 |
+| `sdtab add "@service" "<command>"` | 常駐サービス追加 |
 | `sdtab list` | 管理中タイマー・サービス一覧 |
 | `sdtab remove <name>` | タイマー・サービス削除 |
 
@@ -16,12 +16,11 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 
 | オプション | 説明 |
 |-----------|------|
-| `--service` | 常駐サービスとして登録（タイマーではなく） |
 | `--name <name>` | ユニット名（省略時はコマンドから自動生成） |
 | `--workdir <path>` | 作業ディレクトリ（省略時はカレントディレクトリ） |
 | `--description <text>` | 説明文 |
-| `--env-file <path>` | 環境変数ファイル（サービスのみ） |
-| `--restart <policy>` | リスタートポリシー: `always`/`on-failure`/`no`（サービスのみ、デフォルト: `always`） |
+| `--env-file <path>` | 環境変数ファイル（`@service`のみ） |
+| `--restart <policy>` | リスタートポリシー: `always`/`on-failure`/`no`（`@service`のみ、デフォルト: `always`） |
 
 ## アーキテクチャ
 
