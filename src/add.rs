@@ -6,19 +6,17 @@ use anyhow::{bail, Context, Result};
 use crate::{cron, init, systemctl, unit};
 
 pub fn run(
-    schedule: Option<&str>,
+    schedule: &str,
     command: &str,
-    service: bool,
     name: Option<String>,
     workdir: Option<String>,
     description: Option<String>,
     env_file: Option<String>,
     restart: Option<String>,
 ) -> Result<()> {
-    if service {
+    if schedule.trim() == "@service" {
         run_service(command, name, workdir, description, env_file, restart)
     } else {
-        let schedule = schedule.expect("schedule is required for timers");
         run_timer(schedule, command, name, workdir, description)
     }
 }
@@ -30,13 +28,9 @@ fn run_timer(
     workdir: Option<String>,
     description: Option<String>,
 ) -> Result<()> {
-    // 1. Parse cron expression
     let parsed = cron::parse(schedule)?;
-
-    // 2. Determine name
     let name = name.unwrap_or_else(|| unit::derive_name(command));
 
-    // 3. Check for existing timer
     let unit_dir = init::unit_dir()?;
     let timer_path = Path::new(&unit_dir).join(unit::timer_filename(&name));
     if timer_path.exists() {
@@ -47,11 +41,9 @@ fn run_timer(
         );
     }
 
-    // 4. Determine working directory
     let workdir = resolve_workdir(workdir)?;
     let description = description.unwrap_or_else(|| command.to_string());
 
-    // 5. Generate unit files
     let config = unit::UnitConfig {
         name: name.clone(),
         command: command.to_string(),
@@ -67,7 +59,6 @@ fn run_timer(
     let service_content = unit::generate_service(&config);
     let timer_content = unit::generate_timer(&config);
 
-    // 6. Write unit files
     let service_path = Path::new(&unit_dir).join(unit::service_filename(&name));
     fs::write(&service_path, &service_content)
         .with_context(|| format!("Failed to write {}", service_path.display()))?;
@@ -77,7 +68,6 @@ fn run_timer(
     println!("Created: {}", service_path.display());
     println!("Created: {}", timer_path.display());
 
-    // 7. Reload and enable
     systemctl::daemon_reload()?;
     let timer_unit = unit::timer_filename(&name);
     systemctl::enable_and_start(&timer_unit)?;
@@ -97,7 +87,6 @@ fn run_service(
     env_file: Option<String>,
     restart: Option<String>,
 ) -> Result<()> {
-    // 1. Validate restart policy
     if let Some(ref r) = restart {
         match r.as_str() {
             "always" | "on-failure" | "no" => {}
@@ -108,17 +97,14 @@ fn run_service(
         }
     }
 
-    // 2. Validate env-file exists
     if let Some(ref path) = env_file {
         if !Path::new(path).exists() {
             bail!("Environment file not found: {}", path);
         }
     }
 
-    // 3. Determine name
     let name = name.unwrap_or_else(|| unit::derive_name(command));
 
-    // 4. Check for existing service
     let unit_dir = init::unit_dir()?;
     let service_path = Path::new(&unit_dir).join(unit::service_filename(&name));
     if service_path.exists() {
@@ -129,11 +115,9 @@ fn run_service(
         );
     }
 
-    // 5. Determine working directory
     let workdir = resolve_workdir(workdir)?;
     let description = description.unwrap_or_else(|| command.to_string());
 
-    // 6. Generate service file
     let config = unit::UnitConfig {
         name: name.clone(),
         command: command.to_string(),
@@ -148,13 +132,11 @@ fn run_service(
 
     let service_content = unit::generate_daemon_service(&config);
 
-    // 7. Write service file (no .timer)
     fs::write(&service_path, &service_content)
         .with_context(|| format!("Failed to write {}", service_path.display()))?;
 
     println!("Created: {}", service_path.display());
 
-    // 8. Reload and enable
     systemctl::daemon_reload()?;
     let service_unit = unit::service_filename(&name);
     systemctl::enable_and_start(&service_unit)?;
