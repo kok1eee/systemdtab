@@ -1,17 +1,28 @@
 use crate::cron::CronSchedule;
 
+pub enum UnitType {
+    Timer,
+    Service,
+}
+
 pub struct UnitConfig {
     pub name: String,
     pub command: String,
     pub workdir: String,
     pub description: String,
-    pub cron_expr: String,
-    pub schedule: CronSchedule,
+    #[allow(dead_code)]
+    pub unit_type: UnitType,
+    pub cron_expr: Option<String>,
+    pub schedule: Option<CronSchedule>,
+    pub restart_policy: Option<String>,
+    pub env_file: Option<String>,
 }
 
 pub fn generate_service(config: &UnitConfig) -> String {
+    let cron = config.cron_expr.as_deref().unwrap_or("");
     format!(
-        "# sdtab:cron={cron}\n\
+        "# sdtab:type=timer\n\
+         # sdtab:cron={cron}\n\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
          \n\
@@ -19,7 +30,7 @@ pub fn generate_service(config: &UnitConfig) -> String {
          Type=oneshot\n\
          ExecStart={command}\n\
          WorkingDirectory={workdir}\n",
-        cron = config.cron_expr,
+        cron = cron,
         name = config.name,
         desc = config.description,
         command = config.command,
@@ -27,10 +38,49 @@ pub fn generate_service(config: &UnitConfig) -> String {
     )
 }
 
+pub fn generate_daemon_service(config: &UnitConfig) -> String {
+    let restart = config
+        .restart_policy
+        .as_deref()
+        .unwrap_or("always");
+    let restart_meta = format!("# sdtab:restart={}\n", restart);
+
+    let env_line = match &config.env_file {
+        Some(path) => format!("EnvironmentFile={}\n", path),
+        None => String::new(),
+    };
+
+    format!(
+        "# sdtab:type=service\n\
+         {restart_meta}\
+         [Unit]\n\
+         Description=[sdtab] {name}: {desc}\n\
+         After=network-online.target\n\
+         \n\
+         [Service]\n\
+         Type=simple\n\
+         ExecStart={command}\n\
+         WorkingDirectory={workdir}\n\
+         Restart={restart}\n\
+         RestartSec=5\n\
+         {env_line}\
+         [Install]\n\
+         WantedBy=default.target\n",
+        restart_meta = restart_meta,
+        name = config.name,
+        desc = config.description,
+        command = config.command,
+        workdir = config.workdir,
+        restart = restart,
+        env_line = env_line,
+    )
+}
+
 pub fn generate_timer(config: &UnitConfig) -> String {
-    let trigger = if let Some(ref cal) = config.schedule.on_calendar {
+    let schedule = config.schedule.as_ref().expect("Timer requires a schedule");
+    let trigger = if let Some(ref cal) = schedule.on_calendar {
         format!("OnCalendar={}", cal)
-    } else if let Some(ref boot) = config.schedule.on_boot_sec {
+    } else if let Some(ref boot) = schedule.on_boot_sec {
         format!("OnBootSec={}", boot)
     } else {
         unreachable!("CronSchedule must have either on_calendar or on_boot_sec");
@@ -136,14 +186,18 @@ mod tests {
             command: "uv run ./report.py".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "daily report".to_string(),
-            cron_expr: "0 9 * * *".to_string(),
-            schedule: CronSchedule {
+            unit_type: UnitType::Timer,
+            cron_expr: Some("0 9 * * *".to_string()),
+            schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
                 on_boot_sec: None,
-            },
+            }),
+            restart_policy: None,
+            env_file: None,
         };
 
         let service = generate_service(&config);
+        assert!(service.contains("# sdtab:type=timer"));
         assert!(service.contains("# sdtab:cron=0 9 * * *"));
         assert!(service.contains("Description=[sdtab] report: daily report"));
         assert!(service.contains("ExecStart=uv run ./report.py"));
@@ -157,11 +211,14 @@ mod tests {
             command: "uv run ./report.py".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "daily report".to_string(),
-            cron_expr: "0 9 * * *".to_string(),
-            schedule: CronSchedule {
+            unit_type: UnitType::Timer,
+            cron_expr: Some("0 9 * * *".to_string()),
+            schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
                 on_boot_sec: None,
-            },
+            }),
+            restart_policy: None,
+            env_file: None,
         };
 
         let timer = generate_timer(&config);
@@ -177,14 +234,61 @@ mod tests {
             command: "./boot.sh".to_string(),
             workdir: "/home/user".to_string(),
             description: "run on boot".to_string(),
-            cron_expr: "@reboot".to_string(),
-            schedule: CronSchedule {
+            unit_type: UnitType::Timer,
+            cron_expr: Some("@reboot".to_string()),
+            schedule: Some(CronSchedule {
                 on_calendar: None,
                 on_boot_sec: Some("1min".to_string()),
-            },
+            }),
+            restart_policy: None,
+            env_file: None,
         };
 
         let timer = generate_timer(&config);
         assert!(timer.contains("OnBootSec=1min"));
+    }
+
+    #[test]
+    fn test_daemon_service_generation() {
+        let config = UnitConfig {
+            name: "agent".to_string(),
+            command: "ambient-task-agent serve --port 3000".to_string(),
+            workdir: "/home/user/project".to_string(),
+            description: "ambient-task-agent serve --port 3000".to_string(),
+            unit_type: UnitType::Service,
+            cron_expr: None,
+            schedule: None,
+            restart_policy: Some("on-failure".to_string()),
+            env_file: Some("/home/user/.config/bot/.env".to_string()),
+        };
+
+        let service = generate_daemon_service(&config);
+        assert!(service.contains("# sdtab:type=service"));
+        assert!(service.contains("# sdtab:restart=on-failure"));
+        assert!(service.contains("Type=simple"));
+        assert!(service.contains("ExecStart=ambient-task-agent serve --port 3000"));
+        assert!(service.contains("Restart=on-failure"));
+        assert!(service.contains("RestartSec=5"));
+        assert!(service.contains("EnvironmentFile=/home/user/.config/bot/.env"));
+        assert!(service.contains("WantedBy=default.target"));
+    }
+
+    #[test]
+    fn test_daemon_service_defaults() {
+        let config = UnitConfig {
+            name: "bot".to_string(),
+            command: "python bot.py".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "python bot.py".to_string(),
+            unit_type: UnitType::Service,
+            cron_expr: None,
+            schedule: None,
+            restart_policy: None,
+            env_file: None,
+        };
+
+        let service = generate_daemon_service(&config);
+        assert!(service.contains("Restart=always"));
+        assert!(!service.contains("EnvironmentFile"));
     }
 }
