@@ -1,8 +1,11 @@
 mod add;
 mod cron;
+mod edit;
 mod init;
 mod list;
+mod logs;
 mod remove;
+mod restart;
 mod systemctl;
 mod unit;
 
@@ -47,9 +50,30 @@ enum Commands {
     },
     /// List all managed timers
     List,
-    /// Remove a timer
+    /// Remove a timer or service
     Remove {
-        /// Timer name to remove
+        /// Timer/service name to remove
+        name: String,
+    },
+    /// Edit unit files with $EDITOR
+    Edit {
+        /// Timer/service name to edit
+        name: String,
+    },
+    /// Show logs for a timer or service
+    Logs {
+        /// Timer/service name
+        name: String,
+        /// Follow log output (tail -f)
+        #[arg(short, long)]
+        follow: bool,
+        /// Number of log lines to show
+        #[arg(short = 'n', long, default_value = "50")]
+        lines: u32,
+    },
+    /// Restart a timer or service
+    Restart {
+        /// Timer/service name to restart
         name: String,
     },
 }
@@ -70,6 +94,9 @@ fn main() -> Result<()> {
         } => add::run(&schedule, &command, name, workdir, description, env_file, restart)?,
         Commands::List => list::run()?,
         Commands::Remove { name } => remove::run(&name)?,
+        Commands::Edit { name } => edit::run(&name)?,
+        Commands::Logs { name, follow, lines } => logs::run(&name, follow, lines)?,
+        Commands::Restart { name } => restart::run(&name)?,
     }
 
     Ok(())
