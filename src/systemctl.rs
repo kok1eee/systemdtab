@@ -50,6 +50,11 @@ pub fn is_active(unit: &str) -> Result<bool> {
     Ok(stdout.trim() == "active")
 }
 
+pub fn restart(unit: &str) -> Result<()> {
+    run(&["restart", unit])?;
+    Ok(())
+}
+
 pub fn show_property(unit: &str, property: &str) -> Result<String> {
     let output = run(&["show", "-p", property, "--value", unit])?;
     Ok(output)

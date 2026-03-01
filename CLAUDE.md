@@ -11,6 +11,9 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `sdtab add "@service" "<command>"` | 常駐サービス追加 |
 | `sdtab list` | 管理中タイマー・サービス一覧 |
 | `sdtab remove <name>` | タイマー・サービス削除 |
+| `sdtab edit <name>` | $EDITOR でユニットファイル編集 |
+| `sdtab logs <name> [-f] [-n N]` | ログ表示（journalctl） |
+| `sdtab restart <name>` | タイマー・サービス再起動 |
 
 ### add オプション
 
@@ -33,7 +36,10 @@ src/
 ├── init.rs        # sdtab init
 ├── add.rs         # sdtab add
 ├── list.rs        # sdtab list
-└── remove.rs      # sdtab remove
+├── remove.rs      # sdtab remove
+├── edit.rs        # sdtab edit
+├── logs.rs        # sdtab logs
+└── restart.rs     # sdtab restart
 ```
 
 ## 設計方針
