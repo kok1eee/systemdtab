@@ -1,4 +1,5 @@
 use crate::cron::CronSchedule;
+use crate::init;
 
 pub enum UnitType {
     Timer,
@@ -24,11 +25,13 @@ pub struct UnitConfig {
     pub exec_stop_post: Option<String>,
     pub log_level_max: Option<String>,
     pub random_delay: Option<String>,
+    pub env: Vec<String>,
 }
 
 pub fn generate_service(config: &UnitConfig) -> String {
     let cron = config.cron_expr.as_deref().unwrap_or("");
     let resource_lines = generate_service_options(config);
+    let global_env = global_env_line();
     format!(
         "# sdtab:type=timer\n\
          # sdtab:cron={cron}\n\
@@ -39,12 +42,14 @@ pub fn generate_service(config: &UnitConfig) -> String {
          Type=oneshot\n\
          ExecStart={command}\n\
          WorkingDirectory={workdir}\n\
+         {global_env}\
          {resource_lines}",
         cron = cron,
         name = config.name,
         desc = config.description,
         command = config.command,
         workdir = config.workdir,
+        global_env = global_env,
         resource_lines = resource_lines,
     )
 }
@@ -62,6 +67,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
     };
 
     let resource_lines = generate_service_options(config);
+    let global_env = global_env_line();
 
     format!(
         "# sdtab:type=service\n\
@@ -76,6 +82,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          WorkingDirectory={workdir}\n\
          Restart={restart}\n\
          RestartSec=5\n\
+         {global_env}\
          {env_line}\
          {resource_lines}\
          [Install]\n\
@@ -86,6 +93,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         command = config.command,
         workdir = config.workdir,
         restart = restart,
+        global_env = global_env,
         env_line = env_line,
         resource_lines = resource_lines,
     )
@@ -123,6 +131,13 @@ pub fn generate_timer(config: &UnitConfig) -> String {
     )
 }
 
+fn global_env_line() -> String {
+    match init::global_env_path() {
+        Ok(path) => format!("EnvironmentFile=-{}\n", path),
+        Err(_) => String::new(),
+    }
+}
+
 fn generate_service_options(config: &UnitConfig) -> String {
     let mut lines = String::new();
     if let Some(ref val) = config.exec_start_pre {
@@ -145,6 +160,9 @@ fn generate_service_options(config: &UnitConfig) -> String {
     }
     if let Some(ref val) = config.log_level_max {
         lines.push_str(&format!("LogLevelMax={}\n", val));
+    }
+    for env_val in &config.env {
+        lines.push_str(&format!("Environment={}\n", env_val));
     }
     lines
 }
@@ -252,6 +270,7 @@ mod tests {
             exec_stop_post: None,
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let service = generate_service(&config);
@@ -288,6 +307,7 @@ mod tests {
             exec_stop_post: None,
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let timer = generate_timer(&config);
@@ -321,6 +341,7 @@ mod tests {
             exec_stop_post: None,
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let timer = generate_timer(&config);
@@ -347,6 +368,7 @@ mod tests {
             exec_stop_post: None,
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let service = generate_daemon_service(&config);
@@ -380,11 +402,15 @@ mod tests {
             exec_stop_post: None,
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let service = generate_daemon_service(&config);
         assert!(service.contains("Restart=always"));
-        assert!(!service.contains("EnvironmentFile"));
+        // Global env is always present (with - prefix for optional)
+        assert!(service.contains("EnvironmentFile=-"));
+        // User-specified env file (without - prefix) should NOT be present
+        assert!(!service.contains("EnvironmentFile=/"));
     }
 
     #[test]
@@ -412,6 +438,7 @@ mod tests {
             exec_stop_post: None,
             log_level_max: Some("warning".to_string()),
             random_delay: Some("5m".to_string()),
+            env: vec![],
         };
 
         let service = generate_service(&config);
@@ -445,6 +472,7 @@ mod tests {
             exec_stop_post: Some("/usr/bin/curl -s http://notify/down".to_string()),
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let service = generate_daemon_service(&config);
@@ -479,6 +507,7 @@ mod tests {
             exec_stop_post: None,
             log_level_max: None,
             random_delay: None,
+            env: vec![],
         };
 
         let service = generate_service(&config);

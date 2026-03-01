@@ -21,6 +21,7 @@ pub struct AddOptions {
     pub exec_stop_post: Option<String>,
     pub log_level_max: Option<String>,
     pub random_delay: Option<String>,
+    pub env: Vec<String>,
 }
 
 pub fn run(opts: AddOptions) -> Result<()> {
@@ -48,12 +49,13 @@ fn run_timer(opts: AddOptions) -> Result<()> {
     }
 
     let workdir = resolve_workdir(opts.workdir)?;
+    let resolved_command = init::resolve_command(&opts.command)?;
     let description = opts.description.unwrap_or_else(|| opts.command.clone());
     let display_schedule = parsed.display.clone().unwrap_or_else(|| opts.schedule.clone());
 
     let config = unit::UnitConfig {
         name: name.clone(),
-        command: opts.command.clone(),
+        command: resolved_command.clone(),
         workdir,
         description,
         unit_type: unit::UnitType::Timer,
@@ -69,6 +71,7 @@ fn run_timer(opts: AddOptions) -> Result<()> {
         exec_stop_post: opts.exec_stop_post,
         log_level_max: opts.log_level_max,
         random_delay: opts.random_delay,
+        env: opts.env,
     };
 
     let service_content = unit::generate_service(&config);
@@ -89,7 +92,7 @@ fn run_timer(opts: AddOptions) -> Result<()> {
 
     println!("Timer '{}' is now active.", name);
     println!("  Schedule: {}", display_schedule);
-    println!("  Command:  {}", opts.command);
+    println!("  Command:  {}", resolved_command);
 
     Ok(())
 }
@@ -124,11 +127,12 @@ fn run_service(opts: AddOptions) -> Result<()> {
     }
 
     let workdir = resolve_workdir(opts.workdir)?;
+    let resolved_command = init::resolve_command(&opts.command)?;
     let description = opts.description.unwrap_or_else(|| opts.command.clone());
 
     let config = unit::UnitConfig {
         name: name.clone(),
-        command: opts.command.clone(),
+        command: resolved_command.clone(),
         workdir,
         description,
         unit_type: unit::UnitType::Service,
@@ -144,6 +148,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
         exec_stop_post: opts.exec_stop_post,
         log_level_max: opts.log_level_max,
         random_delay: None, // timer only
+        env: opts.env,
     };
 
     let service_content = unit::generate_daemon_service(&config);
@@ -159,7 +164,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
 
     let restart_display = opts.restart.as_deref().unwrap_or("always");
     println!("Service '{}' is now active.", name);
-    println!("  Command: {}", opts.command);
+    println!("  Command: {}", resolved_command);
     println!("  Restart: {}", restart_display);
     if let Some(ref ef) = opts.env_file {
         println!("  EnvFile: {}", ef);
