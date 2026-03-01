@@ -74,6 +74,9 @@ enum Commands {
         /// Randomized delay for timer trigger (e.g., 5m, 30s). Timer only
         #[arg(long)]
         random_delay: Option<String>,
+        /// Environment variables (e.g., --env "PATH=/usr/bin" --env "FOO=bar"). Repeatable
+        #[arg(long)]
+        env: Vec<String>,
     },
     /// List all managed timers
     List,
@@ -144,6 +147,7 @@ fn main() -> Result<()> {
             exec_stop_post,
             log_level_max,
             random_delay,
+            env,
         } => add::run(add::AddOptions {
             schedule,
             command,
@@ -160,6 +164,7 @@ fn main() -> Result<()> {
             exec_stop_post,
             log_level_max,
             random_delay,
+            env,
         })?,
         Commands::List => list::run()?,
         Commands::Remove { name } => remove::run(&name)?,

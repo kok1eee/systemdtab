@@ -35,6 +35,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `--exec-stop-post <cmd>` | プロセス停止後に実行するコマンド |
 | `--log-level-max <level>` | 保存ログレベル上限（例: `warning`, `err`） |
 | `--random-delay <duration>` | タイマー発火のランダム遅延（例: `5m`）。タイマーのみ |
+| `--env <KEY=VALUE>` | 環境変数（複数指定可: `--env "PATH=..." --env "FOO=bar"`） |
 
 ## アーキテクチャ
 
