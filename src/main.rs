@@ -1,13 +1,17 @@
 mod add;
+mod apply;
 mod cron;
 mod disable;
 mod edit;
 mod enable;
+mod export;
 mod init;
 mod list;
 mod logs;
+mod parse_unit;
 mod remove;
 mod restart;
+mod sdtabfile;
 mod status;
 mod systemctl;
 mod unit;
@@ -23,6 +27,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Initialize sdtab (enable linger, create directories)
     Init,
@@ -30,54 +35,7 @@ enum Commands {
     ///
     /// sdtab add "<schedule>" "<command>"
     /// Use @service for persistent daemons: sdtab add "@service" "<command>"
-    Add {
-        /// Schedule: cron expression, @daily, @reboot, @service, etc.
-        schedule: String,
-        /// Command to execute
-        command: String,
-        /// Timer/service name (auto-generated from command if omitted)
-        #[arg(long)]
-        name: Option<String>,
-        /// Working directory (defaults to current directory)
-        #[arg(long)]
-        workdir: Option<String>,
-        /// Description
-        #[arg(long)]
-        description: Option<String>,
-        /// Environment file path (@service only)
-        #[arg(long)]
-        env_file: Option<String>,
-        /// Restart policy: always, on-failure, no (@service only, default: always)
-        #[arg(long)]
-        restart: Option<String>,
-        /// Memory limit (e.g., 512M, 1G)
-        #[arg(long)]
-        memory_max: Option<String>,
-        /// CPU quota (e.g., 50%, 200%)
-        #[arg(long)]
-        cpu_quota: Option<String>,
-        /// I/O weight: 1-10000 (default: 100, lower = less I/O)
-        #[arg(long)]
-        io_weight: Option<String>,
-        /// Timeout for stopping the process (e.g., 30s, 5m)
-        #[arg(long)]
-        timeout_stop: Option<String>,
-        /// Command to run before ExecStart
-        #[arg(long)]
-        exec_start_pre: Option<String>,
-        /// Command to run after process stops
-        #[arg(long)]
-        exec_stop_post: Option<String>,
-        /// Max log level to store (emerg/alert/crit/err/warning/notice/info/debug)
-        #[arg(long)]
-        log_level_max: Option<String>,
-        /// Randomized delay for timer trigger (e.g., 5m, 30s). Timer only
-        #[arg(long)]
-        random_delay: Option<String>,
-        /// Environment variables (e.g., --env "PATH=/usr/bin" --env "FOO=bar"). Repeatable
-        #[arg(long)]
-        env: Vec<String>,
-    },
+    Add(add::AddOptions),
     /// List all managed timers
     List,
     /// Remove a timer or service
@@ -124,6 +82,23 @@ enum Commands {
         /// Timer/service name to disable
         name: String,
     },
+    /// Export current configuration to TOML
+    Export {
+        /// Output file path (stdout if omitted)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Apply configuration from a TOML file
+    Apply {
+        /// Path to Sdtabfile.toml
+        file: String,
+        /// Remove units not in the file
+        #[arg(long)]
+        prune: bool,
+        /// Show changes without applying
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -131,41 +106,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init => init::run()?,
-        Commands::Add {
-            schedule,
-            command,
-            name,
-            workdir,
-            description,
-            env_file,
-            restart,
-            memory_max,
-            cpu_quota,
-            io_weight,
-            timeout_stop,
-            exec_start_pre,
-            exec_stop_post,
-            log_level_max,
-            random_delay,
-            env,
-        } => add::run(add::AddOptions {
-            schedule,
-            command,
-            name,
-            workdir,
-            description,
-            env_file,
-            restart,
-            memory_max,
-            cpu_quota,
-            io_weight,
-            timeout_stop,
-            exec_start_pre,
-            exec_stop_post,
-            log_level_max,
-            random_delay,
-            env,
-        })?,
+        Commands::Add(opts) => add::run(opts)?,
         Commands::List => list::run()?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
@@ -174,6 +115,8 @@ fn main() -> Result<()> {
         Commands::Status { name } => status::run(&name)?,
         Commands::Enable { name } => enable::run(&name)?,
         Commands::Disable { name } => disable::run(&name)?,
+        Commands::Export { output } => export::run(output.as_deref())?,
+        Commands::Apply { file, prune, dry_run } => apply::run(&file, prune, dry_run)?,
     }
 
     Ok(())

@@ -133,7 +133,7 @@ fn check_incomplete_syntax(expr: &str) -> Result<()> {
 
     // Check for out-of-range ordinal: @32nd, @0th, etc.
     if let Some(day) = try_parse_ordinal_any(&lower) {
-        if day < 1 || day > 31 {
+        if !(1..=31).contains(&day) {
             bail!("Day must be 1-31, got {}", day);
         }
         // Valid ordinal but missing time
@@ -237,7 +237,7 @@ fn parse_extended(expr: &str) -> Result<Option<CronSchedule>> {
             bail!("Invalid @monthly syntax. Use: @monthly/1/9 or @monthly/15/9:30");
         }
         let day: u32 = parts[1].parse().map_err(|_| anyhow::anyhow!("Invalid day: {}", parts[1]))?;
-        if day < 1 || day > 31 {
+        if !(1..=31).contains(&day) {
             bail!("Day must be between 1 and 31");
         }
         let (hour, minute) = parse_time_spec(parts[2])?;
@@ -335,7 +335,7 @@ fn try_parse_ordinal(keyword: &str) -> Option<u32> {
         .or_else(|| s.strip_suffix("rd"))
         .or_else(|| s.strip_suffix("th"))?;
     let n: u32 = num_str.parse().ok()?;
-    if n >= 1 && n <= 31 {
+    if (1..=31).contains(&n) {
         Some(n)
     } else {
         None

@@ -17,6 +17,8 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `sdtab enable <name>` | タイマー・サービス有効化 |
 | `sdtab disable <name>` | タイマー・サービス一時停止（ファイル保持） |
 | `sdtab remove <name>` | タイマー・サービス削除 |
+| `sdtab export [-o <file>]` | 現在の設定を TOML で出力 |
+| `sdtab apply <file> [--prune] [--dry-run]` | TOML から一括反映 |
 
 ### add オプション
 
@@ -41,29 +43,33 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 
 ```
 src/
-├── main.rs        # CLI定義（clap derive）
-├── cron.rs        # cron式 → OnCalendar変換
-├── unit.rs        # .service/.timer ファイル生成（タイマー + 常駐サービス）
-├── systemctl.rs   # systemctl --user ラッパー
-├── init.rs        # sdtab init
-├── add.rs         # sdtab add
-├── list.rs        # sdtab list
-├── remove.rs      # sdtab remove
-├── edit.rs        # sdtab edit
-├── logs.rs        # sdtab logs
-├── restart.rs     # sdtab restart
-├── status.rs      # sdtab status
-├── enable.rs      # sdtab enable
-└── disable.rs     # sdtab disable
+├── main.rs         # CLI定義（clap derive）
+├── cron.rs         # cron式 → OnCalendar変換
+├── unit.rs         # .service/.timer ファイル生成（タイマー + 常駐サービス）
+├── systemctl.rs    # systemctl --user ラッパー
+├── init.rs         # sdtab init
+├── add.rs          # sdtab add
+├── parse_unit.rs   # ユニットファイル解析（共通モジュール）
+├── sdtabfile.rs    # TOML シリアライズ/デシリアライズ構造体（export/apply 共有）
+├── export.rs       # sdtab export
+├── apply.rs        # sdtab apply
+├── list.rs         # sdtab list
+├── remove.rs       # sdtab remove
+├── edit.rs         # sdtab edit
+├── logs.rs         # sdtab logs
+├── restart.rs      # sdtab restart
+├── status.rs       # sdtab status
+├── enable.rs       # sdtab enable
+└── disable.rs      # sdtab disable
 ```
 
 ## 設計方針
 
 - ユーザーレベルタイマー（`--user`）のみ。システムレベルは対象外
 - 管理ユニットには `sdtab-` プレフィックスを付与
-- メタデータは `.service` ファイルのコメントに保存（`# sdtab:type=`, `# sdtab:cron=`, `# sdtab:restart=`）
+- メタデータは `.service` ファイルのコメントに保存（`# sdtab:type=`, `# sdtab:cron=`, `# sdtab:restart=`, `# sdtab:command=`）
 - cron パーサーは自前実装（依存最小化）
-- 依存: `clap` + `anyhow` のみ
+- 依存: `clap` + `anyhow` + `serde` + `toml`
 
 ## ビルド・テスト
 

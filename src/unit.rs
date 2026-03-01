@@ -1,18 +1,11 @@
 use crate::cron::CronSchedule;
 use crate::init;
 
-pub enum UnitType {
-    Timer,
-    Service,
-}
-
 pub struct UnitConfig {
     pub name: String,
     pub command: String,
     pub workdir: String,
     pub description: String,
-    #[allow(dead_code)]
-    pub unit_type: UnitType,
     pub cron_expr: Option<String>,
     pub schedule: Option<CronSchedule>,
     pub restart_policy: Option<String>,
@@ -26,15 +19,21 @@ pub struct UnitConfig {
     pub log_level_max: Option<String>,
     pub random_delay: Option<String>,
     pub env: Vec<String>,
+    pub original_command: Option<String>,
 }
 
 pub fn generate_service(config: &UnitConfig) -> String {
     let cron = config.cron_expr.as_deref().unwrap_or("");
     let resource_lines = generate_service_options(config);
     let global_env = global_env_line();
+    let command_meta = match &config.original_command {
+        Some(cmd) => format!("# sdtab:command={}\n", cmd),
+        None => String::new(),
+    };
     format!(
         "# sdtab:type=timer\n\
          # sdtab:cron={cron}\n\
+         {command_meta}\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
          \n\
@@ -45,6 +44,7 @@ pub fn generate_service(config: &UnitConfig) -> String {
          {global_env}\
          {resource_lines}",
         cron = cron,
+        command_meta = command_meta,
         name = config.name,
         desc = config.description,
         command = config.command,
@@ -60,6 +60,10 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         .as_deref()
         .unwrap_or("always");
     let restart_meta = format!("# sdtab:restart={}\n", restart);
+    let command_meta = match &config.original_command {
+        Some(cmd) => format!("# sdtab:command={}\n", cmd),
+        None => String::new(),
+    };
 
     let env_line = match &config.env_file {
         Some(path) => format!("EnvironmentFile={}\n", path),
@@ -72,6 +76,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
     format!(
         "# sdtab:type=service\n\
          {restart_meta}\
+         {command_meta}\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
          After=network-online.target\n\
@@ -88,6 +93,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          [Install]\n\
          WantedBy=default.target\n",
         restart_meta = restart_meta,
+        command_meta = command_meta,
         name = config.name,
         desc = config.description,
         command = config.command,
@@ -252,7 +258,7 @@ mod tests {
             command: "uv run ./report.py".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "daily report".to_string(),
-            unit_type: UnitType::Timer,
+
             cron_expr: Some("0 9 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
@@ -271,6 +277,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let service = generate_service(&config);
@@ -289,7 +296,7 @@ mod tests {
             command: "uv run ./report.py".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "daily report".to_string(),
-            unit_type: UnitType::Timer,
+
             cron_expr: Some("0 9 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
@@ -308,6 +315,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let timer = generate_timer(&config);
@@ -323,7 +331,7 @@ mod tests {
             command: "./boot.sh".to_string(),
             workdir: "/home/user".to_string(),
             description: "run on boot".to_string(),
-            unit_type: UnitType::Timer,
+
             cron_expr: Some("@reboot".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: None,
@@ -342,6 +350,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let timer = generate_timer(&config);
@@ -355,7 +364,7 @@ mod tests {
             command: "ambient-task-agent serve --port 3000".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "ambient-task-agent serve --port 3000".to_string(),
-            unit_type: UnitType::Service,
+
             cron_expr: None,
             schedule: None,
             restart_policy: Some("on-failure".to_string()),
@@ -369,6 +378,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let service = generate_daemon_service(&config);
@@ -389,7 +399,7 @@ mod tests {
             command: "python bot.py".to_string(),
             workdir: "/home/user".to_string(),
             description: "python bot.py".to_string(),
-            unit_type: UnitType::Service,
+
             cron_expr: None,
             schedule: None,
             restart_policy: None,
@@ -403,6 +413,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let service = generate_daemon_service(&config);
@@ -420,7 +431,7 @@ mod tests {
             command: "./heavy-task.sh".to_string(),
             workdir: "/home/user".to_string(),
             description: "heavy task".to_string(),
-            unit_type: UnitType::Timer,
+
             cron_expr: Some("0 10 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 10:00:00".to_string()),
@@ -439,6 +450,7 @@ mod tests {
             log_level_max: Some("warning".to_string()),
             random_delay: Some("5m".to_string()),
             env: vec![],
+            original_command: None,
         };
 
         let service = generate_service(&config);
@@ -459,7 +471,7 @@ mod tests {
             command: "python bot.py".to_string(),
             workdir: "/home/user".to_string(),
             description: "python bot.py".to_string(),
-            unit_type: UnitType::Service,
+
             cron_expr: None,
             schedule: None,
             restart_policy: Some("always".to_string()),
@@ -473,6 +485,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let service = generate_daemon_service(&config);
@@ -489,7 +502,7 @@ mod tests {
             command: "echo hello".to_string(),
             workdir: "/home/user".to_string(),
             description: "light task".to_string(),
-            unit_type: UnitType::Timer,
+
             cron_expr: Some("@daily".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 00:00:00".to_string()),
@@ -508,6 +521,7 @@ mod tests {
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            original_command: None,
         };
 
         let service = generate_service(&config);

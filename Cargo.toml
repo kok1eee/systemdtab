@@ -2,6 +2,11 @@
 name = "systemdtab"
 version = "0.1.0"
 edition = "2021"
+description = "Manage systemd timers and services like crontab"
+license = "MIT"
+repository = "https://github.com/kok1eee/systemdtab"
+keywords = ["systemd", "timer", "crontab", "service"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "sdtab"
@@ -10,3 +15,5 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

@@ -1,10 +1,10 @@
 ---
-description: "systemd timerを管理（一覧・追加・削除）"
+description: "systemd timer/serviceを管理（一覧・追加・削除・エクスポート・一括適用）"
 ---
 
-# /sdtab - systemd timer 管理
+# /sdtab - systemd timer/service 管理
 
-sdtab CLI を使って systemd timer を管理します。
+sdtab CLI を使って systemd timer と常駐サービスを管理します。
 
 ## 前提
 
@@ -18,8 +18,11 @@ $ARGUMENTS でサブコマンドを指定。省略時は一覧表示。
 例:
 - `/sdtab` → 一覧表示
 - `/sdtab add "*/5 * * * *" "./sync.sh"` → タイマー追加
+- `/sdtab add "@service" "node server.js"` → 常駐サービス追加
 - `/sdtab remove sync` → タイマー削除
-- `/sdtab status` → 全タイマーの状態確認
+- `/sdtab status` → 全タイマー・サービスの状態確認
+- `/sdtab export` → 現在の設定を TOML 出力
+- `/sdtab apply Sdtabfile.toml` → TOML から一括反映
 
 ## 実行手順
 
@@ -41,6 +44,7 @@ sdtab add "<schedule>" "<command>" --name <name> --workdir <workdir>
 
 - `--name` 省略時はコマンドから自動生成される
 - `--workdir` 省略時はカレントディレクトリ
+- `@service` の場合: `--restart`, `--env-file` も指定可能
 
 追加後、`sdtab list` で結果を表示。
 
@@ -58,16 +62,37 @@ sdtab remove <name>
 sdtab list
 ```
 
-さらに各タイマーの詳細状態を取得:
+さらに各タイマー・サービスの詳細状態を取得:
 
 ```bash
-systemctl --user status sdtab-<name>.timer
-journalctl --user -u sdtab-<name>.service --no-pager -n 5
+sdtab status <name>
 ```
 
 最近のログと次回実行時刻を見やすくまとめて表示。
 
-## cron 式の参考
+### $ARGUMENTS が "export" の場合
+
+```bash
+sdtab export
+```
+
+現在の設定を TOML 形式で出力。ファイルに保存する場合:
+
+```bash
+sdtab export -o Sdtabfile.toml
+```
+
+### $ARGUMENTS が "apply" で始まる場合
+
+```bash
+sdtab apply <file> --dry-run  # まずドライランで確認
+sdtab apply <file>            # 実際に適用
+sdtab apply <file> --prune    # ファイルにないユニットも削除
+```
+
+差分表示の記号: `+` 追加, `~` 変更, `=` 変更なし, `-` 削除
+
+## スケジュール式の参考
 
 | 書き方 | 意味 |
 |--------|------|
@@ -77,5 +102,10 @@ journalctl --user -u sdtab-<name>.service --no-pager -n 5
 | `0 9 * * 1-5` | 平日 9:00 |
 | `0 0 1 * *` | 毎月1日 0:00 |
 | `@daily` | 毎日 0:00 |
+| `@daily/9` | 毎日 9:00 |
+| `@daily/9:30` | 毎日 9:30 |
+| `@monday/9` | 毎週月曜 9:00 |
+| `@1st/8` | 毎月1日 8:00 |
 | `@hourly` | 毎時 0:00 |
 | `@reboot` | 起動時 |
+| `@service` | 常駐サービス |
