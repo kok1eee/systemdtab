@@ -1,86 +1,52 @@
-use std::fs;
-use std::path::Path;
-
 use anyhow::Result;
 
-use crate::{init, systemctl};
-
-enum EntryType {
-    Timer,
-    Service,
-}
-
-struct Entry {
-    name: String,
-    entry_type: EntryType,
-    schedule: String,
-    command: String,
-    status: String,
-}
+use crate::{parse_unit, systemctl, unit};
 
 pub fn run() -> Result<()> {
-    let unit_dir = init::unit_dir()?;
-    let dir_path = Path::new(&unit_dir);
+    let units = parse_unit::scan_all_units()?;
 
-    if !dir_path.exists() {
-        println!("No timers or services found. Run 'sdtab init' first.");
-        return Ok(());
-    }
-
-    let mut entries: Vec<Entry> = Vec::new();
-
-    // Find all sdtab-*.service files (both timers and daemon services have .service)
-    let read_dir = fs::read_dir(dir_path)?;
-    for entry in read_dir {
-        let entry = entry?;
-        let filename = entry.file_name().to_string_lossy().to_string();
-
-        if !filename.starts_with("sdtab-") || !filename.ends_with(".service") {
-            continue;
-        }
-
-        let name = filename
-            .strip_prefix("sdtab-")
-            .unwrap()
-            .strip_suffix(".service")
-            .unwrap()
-            .to_string();
-
-        let service_content = fs::read_to_string(entry.path())?;
-        let metadata = parse_service_metadata(&service_content);
-
-        let (entry_type, schedule, status) = match metadata.unit_type {
-            EntryType::Service => {
-                let service_unit = format!("sdtab-{}.service", name);
-                let active_state = systemctl::show_property(&service_unit, "ActiveState")
-                    .unwrap_or_else(|_| "unknown".to_string());
-                (EntryType::Service, "@service".to_string(), active_state)
-            }
-            EntryType::Timer => {
-                let timer_unit = format!("sdtab-{}.timer", name);
-                let next_run =
-                    systemctl::show_property(&timer_unit, "NextElapseUSecRealtime")
-                        .unwrap_or_else(|_| "?".to_string());
-                let next_run = format_next_run(&next_run);
-                (EntryType::Timer, metadata.cron_expr, next_run)
-            }
-        };
-
-        entries.push(Entry {
-            name,
-            entry_type,
-            schedule,
-            command: metadata.command,
-            status,
-        });
-    }
-
-    if entries.is_empty() {
+    if units.is_empty() {
         println!("No timers or services found.");
         return Ok(());
     }
 
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    struct Entry {
+        name: String,
+        type_str: &'static str,
+        schedule: String,
+        command: String,
+        status: String,
+    }
+
+    let mut entries: Vec<Entry> = Vec::new();
+
+    for unit in &units {
+        let (type_str, schedule, status) = match unit.unit_type {
+            parse_unit::UnitType::Service => {
+                let service_unit = unit::service_filename(&unit.name);
+                let active_state = systemctl::show_property(&service_unit, "ActiveState")
+                    .unwrap_or_else(|_| "unknown".to_string());
+                ("service", "@service".to_string(), active_state)
+            }
+            parse_unit::UnitType::Timer => {
+                let timer_unit = unit::timer_filename(&unit.name);
+                let next_run =
+                    systemctl::show_property(&timer_unit, "NextElapseUSecRealtime")
+                        .unwrap_or_else(|_| "?".to_string());
+                let next_run = format_next_run(&next_run);
+                let schedule = unit.cron_expr.as_deref().unwrap_or("?").to_string();
+                ("timer", schedule, next_run)
+            }
+        };
+
+        entries.push(Entry {
+            name: unit.name.clone(),
+            type_str,
+            schedule,
+            command: unit.command.clone(),
+            status,
+        });
+    }
 
     // Calculate column widths
     let name_width = entries.iter().map(|e| e.name.len()).max().unwrap_or(4).max(4);
@@ -111,15 +77,10 @@ pub fn run() -> Result<()> {
     );
 
     for entry in &entries {
-        let type_str = match entry.entry_type {
-            EntryType::Timer => "timer",
-            EntryType::Service => "service",
-        };
-
         println!(
             "{:<name_w$}  {:<type_w$}  {:<sched_w$}  {:<cmd_w$}  {}",
             entry.name,
-            type_str,
+            entry.type_str,
             entry.schedule,
             entry.command,
             entry.status,
@@ -131,38 +92,6 @@ pub fn run() -> Result<()> {
     }
 
     Ok(())
-}
-
-struct ServiceMetadata {
-    unit_type: EntryType,
-    cron_expr: String,
-    command: String,
-}
-
-fn parse_service_metadata(content: &str) -> ServiceMetadata {
-    let mut unit_type = EntryType::Timer; // default for backward compat
-    let mut cron_expr = "?".to_string();
-    let mut command = "?".to_string();
-
-    for line in content.lines() {
-        if line.starts_with("# sdtab:type=service") {
-            unit_type = EntryType::Service;
-        } else if line.starts_with("# sdtab:type=timer") {
-            unit_type = EntryType::Timer;
-        }
-        if let Some(cron) = line.strip_prefix("# sdtab:cron=") {
-            cron_expr = cron.to_string();
-        }
-        if let Some(cmd) = line.strip_prefix("ExecStart=") {
-            command = cmd.to_string();
-        }
-    }
-
-    ServiceMetadata {
-        unit_type,
-        cron_expr,
-        command,
-    }
 }
 
 fn format_next_run(raw: &str) -> String {

@@ -2,38 +2,70 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use clap::Args;
 
 use crate::{cron, init, systemctl, unit};
 
+#[derive(Args)]
 pub struct AddOptions {
+    /// Schedule: cron expression, @daily, @reboot, @service, etc.
     pub schedule: String,
+    /// Command to execute
     pub command: String,
+    /// Timer/service name (auto-generated from command if omitted)
+    #[arg(long)]
     pub name: Option<String>,
+    /// Working directory (defaults to current directory)
+    #[arg(long)]
     pub workdir: Option<String>,
+    /// Description
+    #[arg(long)]
     pub description: Option<String>,
+    /// Environment file path (@service only)
+    #[arg(long)]
     pub env_file: Option<String>,
+    /// Restart policy: always, on-failure, no (@service only, default: always)
+    #[arg(long)]
     pub restart: Option<String>,
+    /// Memory limit (e.g., 512M, 1G)
+    #[arg(long)]
     pub memory_max: Option<String>,
+    /// CPU quota (e.g., 50%, 200%)
+    #[arg(long)]
     pub cpu_quota: Option<String>,
+    /// I/O weight: 1-10000 (default: 100, lower = less I/O)
+    #[arg(long)]
     pub io_weight: Option<String>,
+    /// Timeout for stopping the process (e.g., 30s, 5m)
+    #[arg(long)]
     pub timeout_stop: Option<String>,
+    /// Command to run before ExecStart
+    #[arg(long)]
     pub exec_start_pre: Option<String>,
+    /// Command to run after process stops
+    #[arg(long)]
     pub exec_stop_post: Option<String>,
+    /// Max log level to store (emerg/alert/crit/err/warning/notice/info/debug)
+    #[arg(long)]
     pub log_level_max: Option<String>,
+    /// Randomized delay for timer trigger (e.g., 5m, 30s). Timer only
+    #[arg(long)]
     pub random_delay: Option<String>,
+    /// Environment variables (e.g., --env "PATH=/usr/bin" --env "FOO=bar"). Repeatable
+    #[arg(long)]
     pub env: Vec<String>,
 }
 
 pub fn run(opts: AddOptions) -> Result<()> {
-    if opts.schedule.trim() == "@service" {
+    let parsed = cron::parse(&opts.schedule)?;
+    if parsed.is_service {
         run_service(opts)
     } else {
-        run_timer(opts)
+        run_timer(opts, parsed)
     }
 }
 
-fn run_timer(opts: AddOptions) -> Result<()> {
-    let parsed = cron::parse(&opts.schedule)?;
+fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     let name = opts.name.unwrap_or_else(|| unit::derive_name(&opts.command));
 
     let unit_dir = init::unit_dir()?;
@@ -52,13 +84,18 @@ fn run_timer(opts: AddOptions) -> Result<()> {
     let resolved_command = init::resolve_command(&opts.command)?;
     let description = opts.description.unwrap_or_else(|| opts.command.clone());
     let display_schedule = parsed.display.clone().unwrap_or_else(|| opts.schedule.clone());
+    let original_command = if resolved_command != opts.command {
+        Some(opts.command)
+    } else {
+        None
+    };
 
     let config = unit::UnitConfig {
         name: name.clone(),
         command: resolved_command.clone(),
         workdir,
         description,
-        unit_type: unit::UnitType::Timer,
+
         cron_expr: Some(display_schedule.clone()),
         schedule: Some(parsed),
         restart_policy: None,
@@ -72,6 +109,7 @@ fn run_timer(opts: AddOptions) -> Result<()> {
         log_level_max: opts.log_level_max,
         random_delay: opts.random_delay,
         env: opts.env,
+        original_command,
     };
 
     let service_content = unit::generate_service(&config);
@@ -129,13 +167,17 @@ fn run_service(opts: AddOptions) -> Result<()> {
     let workdir = resolve_workdir(opts.workdir)?;
     let resolved_command = init::resolve_command(&opts.command)?;
     let description = opts.description.unwrap_or_else(|| opts.command.clone());
+    let original_command = if resolved_command != opts.command {
+        Some(opts.command)
+    } else {
+        None
+    };
 
     let config = unit::UnitConfig {
         name: name.clone(),
         command: resolved_command.clone(),
         workdir,
         description,
-        unit_type: unit::UnitType::Service,
         cron_expr: None,
         schedule: None,
         restart_policy: opts.restart.clone(),
@@ -149,6 +191,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
         log_level_max: opts.log_level_max,
         random_delay: None, // timer only
         env: opts.env,
+        original_command,
     };
 
     let service_content = unit::generate_daemon_service(&config);
