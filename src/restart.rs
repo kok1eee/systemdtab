@@ -11,21 +11,17 @@ pub fn run(name: &str) -> Result<()> {
     let service_path = dir_path.join(unit::service_filename(name));
     let timer_path = dir_path.join(unit::timer_filename(name));
 
-    if !service_path.exists() && !timer_path.exists() {
+    if !service_path.exists() {
         bail!("'{}' not found.", name);
     }
 
-    let is_timer = timer_path.exists();
-
-    if is_timer {
-        let timer_unit = unit::timer_filename(name);
-        systemctl::restart(&timer_unit)?;
-        println!("Restarted timer '{}'.", name);
-    } else {
-        let service_unit = unit::service_filename(name);
-        systemctl::restart(&service_unit)?;
-        println!("Restarted service '{}'.", name);
+    if timer_path.exists() {
+        bail!("'{}' is a timer. Only services can be restarted.", name);
     }
+
+    let service_unit = unit::service_filename(name);
+    systemctl::restart(&service_unit)?;
+    println!("Restarted service '{}'.", name);
 
     Ok(())
 }

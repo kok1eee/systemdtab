@@ -1,11 +1,14 @@
 mod add;
 mod cron;
+mod disable;
 mod edit;
+mod enable;
 mod init;
 mod list;
 mod logs;
 mod remove;
 mod restart;
+mod status;
 mod systemctl;
 mod unit;
 
@@ -47,6 +50,30 @@ enum Commands {
         /// Restart policy: always, on-failure, no (@service only, default: always)
         #[arg(long)]
         restart: Option<String>,
+        /// Memory limit (e.g., 512M, 1G)
+        #[arg(long)]
+        memory_max: Option<String>,
+        /// CPU quota (e.g., 50%, 200%)
+        #[arg(long)]
+        cpu_quota: Option<String>,
+        /// I/O weight: 1-10000 (default: 100, lower = less I/O)
+        #[arg(long)]
+        io_weight: Option<String>,
+        /// Timeout for stopping the process (e.g., 30s, 5m)
+        #[arg(long)]
+        timeout_stop: Option<String>,
+        /// Command to run before ExecStart
+        #[arg(long)]
+        exec_start_pre: Option<String>,
+        /// Command to run after process stops
+        #[arg(long)]
+        exec_stop_post: Option<String>,
+        /// Max log level to store (emerg/alert/crit/err/warning/notice/info/debug)
+        #[arg(long)]
+        log_level_max: Option<String>,
+        /// Randomized delay for timer trigger (e.g., 5m, 30s). Timer only
+        #[arg(long)]
+        random_delay: Option<String>,
     },
     /// List all managed timers
     List,
@@ -70,10 +97,28 @@ enum Commands {
         /// Number of log lines to show
         #[arg(short = 'n', long, default_value = "50")]
         lines: u32,
+        /// Filter by priority (emerg/alert/crit/err/warning/notice/info/debug)
+        #[arg(short, long)]
+        priority: Option<String>,
     },
     /// Restart a timer or service
     Restart {
         /// Timer/service name to restart
+        name: String,
+    },
+    /// Show detailed status of a timer or service
+    Status {
+        /// Timer/service name
+        name: String,
+    },
+    /// Enable (start) a timer or service
+    Enable {
+        /// Timer/service name to enable
+        name: String,
+    },
+    /// Disable (stop) a timer or service without removing
+    Disable {
+        /// Timer/service name to disable
         name: String,
     },
 }
@@ -91,12 +136,39 @@ fn main() -> Result<()> {
             description,
             env_file,
             restart,
-        } => add::run(&schedule, &command, name, workdir, description, env_file, restart)?,
+            memory_max,
+            cpu_quota,
+            io_weight,
+            timeout_stop,
+            exec_start_pre,
+            exec_stop_post,
+            log_level_max,
+            random_delay,
+        } => add::run(add::AddOptions {
+            schedule,
+            command,
+            name,
+            workdir,
+            description,
+            env_file,
+            restart,
+            memory_max,
+            cpu_quota,
+            io_weight,
+            timeout_stop,
+            exec_start_pre,
+            exec_stop_post,
+            log_level_max,
+            random_delay,
+        })?,
         Commands::List => list::run()?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
-        Commands::Logs { name, follow, lines } => logs::run(&name, follow, lines)?,
+        Commands::Logs { name, follow, lines, priority } => logs::run(&name, follow, lines, priority)?,
         Commands::Restart { name } => restart::run(&name)?,
+        Commands::Status { name } => status::run(&name)?,
+        Commands::Enable { name } => enable::run(&name)?,
+        Commands::Disable { name } => disable::run(&name)?,
     }
 
     Ok(())
