@@ -16,10 +16,19 @@ pub struct UnitConfig {
     pub schedule: Option<CronSchedule>,
     pub restart_policy: Option<String>,
     pub env_file: Option<String>,
+    pub memory_max: Option<String>,
+    pub cpu_quota: Option<String>,
+    pub io_weight: Option<String>,
+    pub timeout_stop: Option<String>,
+    pub exec_start_pre: Option<String>,
+    pub exec_stop_post: Option<String>,
+    pub log_level_max: Option<String>,
+    pub random_delay: Option<String>,
 }
 
 pub fn generate_service(config: &UnitConfig) -> String {
     let cron = config.cron_expr.as_deref().unwrap_or("");
+    let resource_lines = generate_service_options(config);
     format!(
         "# sdtab:type=timer\n\
          # sdtab:cron={cron}\n\
@@ -29,12 +38,14 @@ pub fn generate_service(config: &UnitConfig) -> String {
          [Service]\n\
          Type=oneshot\n\
          ExecStart={command}\n\
-         WorkingDirectory={workdir}\n",
+         WorkingDirectory={workdir}\n\
+         {resource_lines}",
         cron = cron,
         name = config.name,
         desc = config.description,
         command = config.command,
         workdir = config.workdir,
+        resource_lines = resource_lines,
     )
 }
 
@@ -50,6 +61,8 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         None => String::new(),
     };
 
+    let resource_lines = generate_service_options(config);
+
     format!(
         "# sdtab:type=service\n\
          {restart_meta}\
@@ -64,6 +77,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          Restart={restart}\n\
          RestartSec=5\n\
          {env_line}\
+         {resource_lines}\
          [Install]\n\
          WantedBy=default.target\n",
         restart_meta = restart_meta,
@@ -73,6 +87,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         workdir = config.workdir,
         restart = restart,
         env_line = env_line,
+        resource_lines = resource_lines,
     )
 }
 
@@ -86,6 +101,11 @@ pub fn generate_timer(config: &UnitConfig) -> String {
         unreachable!("CronSchedule must have either on_calendar or on_boot_sec");
     };
 
+    let random_delay = match &config.random_delay {
+        Some(val) => format!("RandomizedDelaySec={}\n", val),
+        None => String::new(),
+    };
+
     format!(
         "[Unit]\n\
          Description=[sdtab] {name} timer\n\
@@ -93,12 +113,40 @@ pub fn generate_timer(config: &UnitConfig) -> String {
          [Timer]\n\
          {trigger}\n\
          Persistent=true\n\
+         {random_delay}\
          \n\
          [Install]\n\
          WantedBy=timers.target\n",
         name = config.name,
         trigger = trigger,
+        random_delay = random_delay,
     )
+}
+
+fn generate_service_options(config: &UnitConfig) -> String {
+    let mut lines = String::new();
+    if let Some(ref val) = config.exec_start_pre {
+        lines.push_str(&format!("ExecStartPre={}\n", val));
+    }
+    if let Some(ref val) = config.exec_stop_post {
+        lines.push_str(&format!("ExecStopPost={}\n", val));
+    }
+    if let Some(ref val) = config.timeout_stop {
+        lines.push_str(&format!("TimeoutStopSec={}\n", val));
+    }
+    if let Some(ref val) = config.memory_max {
+        lines.push_str(&format!("MemoryMax={}\n", val));
+    }
+    if let Some(ref val) = config.cpu_quota {
+        lines.push_str(&format!("CPUQuota={}\n", val));
+    }
+    if let Some(ref val) = config.io_weight {
+        lines.push_str(&format!("IOWeight={}\n", val));
+    }
+    if let Some(ref val) = config.log_level_max {
+        lines.push_str(&format!("LogLevelMax={}\n", val));
+    }
+    lines
 }
 
 pub fn service_filename(name: &str) -> String {
@@ -196,6 +244,14 @@ mod tests {
             }),
             restart_policy: None,
             env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
         };
 
         let service = generate_service(&config);
@@ -224,6 +280,14 @@ mod tests {
             }),
             restart_policy: None,
             env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
         };
 
         let timer = generate_timer(&config);
@@ -249,6 +313,14 @@ mod tests {
             }),
             restart_policy: None,
             env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
         };
 
         let timer = generate_timer(&config);
@@ -267,6 +339,14 @@ mod tests {
             schedule: None,
             restart_policy: Some("on-failure".to_string()),
             env_file: Some("/home/user/.config/bot/.env".to_string()),
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
         };
 
         let service = generate_daemon_service(&config);
@@ -292,10 +372,117 @@ mod tests {
             schedule: None,
             restart_policy: None,
             env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
         };
 
         let service = generate_daemon_service(&config);
         assert!(service.contains("Restart=always"));
         assert!(!service.contains("EnvironmentFile"));
+    }
+
+    #[test]
+    fn test_resource_limits_service() {
+        let config = UnitConfig {
+            name: "heavy".to_string(),
+            command: "./heavy-task.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "heavy task".to_string(),
+            unit_type: UnitType::Timer,
+            cron_expr: Some("0 10 * * *".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 10:00:00".to_string()),
+                on_boot_sec: None,
+                is_service: false,
+                display: None,
+            }),
+            restart_policy: None,
+            env_file: None,
+            memory_max: Some("512M".to_string()),
+            cpu_quota: Some("50%".to_string()),
+            io_weight: Some("10".to_string()),
+            timeout_stop: Some("30s".to_string()),
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: Some("warning".to_string()),
+            random_delay: Some("5m".to_string()),
+        };
+
+        let service = generate_service(&config);
+        assert!(service.contains("MemoryMax=512M"));
+        assert!(service.contains("CPUQuota=50%"));
+        assert!(service.contains("IOWeight=10"));
+        assert!(service.contains("TimeoutStopSec=30s"));
+        assert!(service.contains("LogLevelMax=warning"));
+
+        let timer = generate_timer(&config);
+        assert!(timer.contains("RandomizedDelaySec=5m"));
+    }
+
+    #[test]
+    fn test_resource_limits_daemon() {
+        let config = UnitConfig {
+            name: "bot".to_string(),
+            command: "python bot.py".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "python bot.py".to_string(),
+            unit_type: UnitType::Service,
+            cron_expr: None,
+            schedule: None,
+            restart_policy: Some("always".to_string()),
+            env_file: None,
+            memory_max: Some("1G".to_string()),
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: Some("/usr/bin/test -f /tmp/ready".to_string()),
+            exec_stop_post: Some("/usr/bin/curl -s http://notify/down".to_string()),
+            log_level_max: None,
+            random_delay: None,
+        };
+
+        let service = generate_daemon_service(&config);
+        assert!(service.contains("MemoryMax=1G"));
+        assert!(!service.contains("CPUQuota"));
+        assert!(service.contains("ExecStartPre=/usr/bin/test -f /tmp/ready"));
+        assert!(service.contains("ExecStopPost=/usr/bin/curl -s http://notify/down"));
+    }
+
+    #[test]
+    fn test_no_resource_limits() {
+        let config = UnitConfig {
+            name: "light".to_string(),
+            command: "echo hello".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "light task".to_string(),
+            unit_type: UnitType::Timer,
+            cron_expr: Some("@daily".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 00:00:00".to_string()),
+                on_boot_sec: None,
+                is_service: false,
+                display: None,
+            }),
+            restart_policy: None,
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
+        };
+
+        let service = generate_service(&config);
+        assert!(!service.contains("MemoryMax"));
+        assert!(!service.contains("CPUQuota"));
     }
 }
