@@ -15,9 +15,11 @@ struct Entry {
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(skip)]
+    sort_key: u64, // epoch usec for time sort (0 = service/unknown)
 }
 
-pub fn run(json: bool) -> Result<()> {
+pub fn run(json: bool, sort: &str) -> Result<()> {
     let units = parse_unit::scan_all_units()?;
 
     if units.is_empty() {
@@ -32,21 +34,22 @@ pub fn run(json: bool) -> Result<()> {
     let mut entries: Vec<Entry> = Vec::new();
 
     for unit in &units {
-        let (type_str, schedule, status) = match unit.unit_type {
+        let (type_str, schedule, status, sort_key) = match unit.unit_type {
             parse_unit::UnitType::Service => {
                 let service_unit = unit::service_filename(&unit.name);
                 let active_state = systemctl::show_property(&service_unit, "ActiveState")
                     .unwrap_or_else(|_| "unknown".to_string());
-                ("service", "@service".to_string(), active_state)
+                ("service", "@service".to_string(), active_state, 0u64)
             }
             parse_unit::UnitType::Timer => {
                 let timer_unit = unit::timer_filename(&unit.name);
-                let next_run =
+                let next_run_raw =
                     systemctl::show_property(&timer_unit, "NextElapseUSecRealtime")
                         .unwrap_or_else(|_| "?".to_string());
-                let next_run = format_next_run(&next_run);
+                let next_run = format_next_run(&next_run_raw);
                 let schedule = unit.cron_expr.as_deref().unwrap_or("?").to_string();
-                ("timer", schedule, next_run)
+                let epoch = parse_epoch_usec(&next_run_raw);
+                ("timer", schedule, next_run, epoch)
             }
         };
 
@@ -64,7 +67,27 @@ pub fn run(json: bool) -> Result<()> {
             command: unit.command.clone(),
             status,
             description,
+            sort_key,
         });
+    }
+
+    // Sort
+    match sort {
+        "time" => {
+            // Services (sort_key=0) first, then timers by next run time
+            entries.sort_by(|a, b| {
+                let type_ord = a.sort_key.cmp(&b.sort_key);
+                if type_ord == std::cmp::Ordering::Equal {
+                    a.name.cmp(&b.name)
+                } else {
+                    type_ord
+                }
+            });
+        }
+        _ => {
+            // Default: name alphabetical
+            entries.sort_by(|a, b| a.name.cmp(&b.name));
+        }
     }
 
     if json {
@@ -166,4 +189,20 @@ fn format_next_run(raw: &str) -> String {
         return "-".to_string();
     }
     raw.to_string()
+}
+
+/// Parse systemd's NextElapseUSecRealtime into a sortable u64.
+/// Input format: "Wed 2026-03-04 02:00:00 JST" -> 20260304020000
+fn parse_epoch_usec(raw: &str) -> u64 {
+    // Try to extract "YYYY-MM-DD HH:MM:SS" from the string
+    let parts: Vec<&str> = raw.split_whitespace().collect();
+    if parts.len() >= 3 {
+        // parts[1] = "2026-03-04", parts[2] = "02:00:00"
+        let date_nums: String = parts[1].replace('-', "");
+        let time_nums: String = parts[2].replace(':', "");
+        if let Ok(val) = format!("{}{}", date_nums, time_nums).parse::<u64>() {
+            return val;
+        }
+    }
+    u64::MAX // unknown = sort last
 }

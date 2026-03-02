@@ -49,6 +49,9 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Sort order: time (default, next run) or name
+        #[arg(long, default_value = "time")]
+        sort: String,
     },
     /// Remove a timer or service
     Remove {
@@ -119,7 +122,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init { slack_webhook, slack_mention } => init::run(slack_webhook.as_deref(), slack_mention.as_deref())?,
         Commands::Add(opts) => add::run(opts)?,
-        Commands::List { json } => list::run(json)?,
+        Commands::List { json, sort } => list::run(json, &sort)?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
         Commands::Logs { name, follow, lines, priority } => logs::run(&name, follow, lines, priority)?,
