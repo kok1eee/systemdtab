@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::sdtabfile::{self, Sdtabfile, ServiceEntry, TimerEntry};
-use crate::{add, config, cron, init, parse_unit, remove, systemctl, unit};
+use crate::{config, cron, init, parse_unit, remove, systemctl, unit};
 
 enum DiffStatus {
     Added,
@@ -151,17 +151,14 @@ pub fn run(file: &str, prune: bool, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Apply changes
+    // Apply changes: write all files first, then single daemon-reload
     let mut needs_reload = false;
     for entry in &diff_entries {
         match entry.status {
             DiffStatus::Unchanged => {}
-            DiffStatus::Changed => {
-                update_entry(&sdtabfile, &entry.name, &entry.unit_type)?;
+            DiffStatus::Changed | DiffStatus::Added => {
+                write_entry(&sdtabfile, &entry.name, &entry.unit_type)?;
                 needs_reload = true;
-            }
-            DiffStatus::Added => {
-                apply_entry(&sdtabfile, &entry.name, &entry.unit_type)?;
             }
             DiffStatus::Removed => {
                 if prune {
@@ -171,31 +168,42 @@ pub fn run(file: &str, prune: bool, dry_run: bool) -> Result<()> {
         }
     }
 
-    // Reload once after all file writes, then restart only units that need it
+    // Single daemon-reload, then enable new units and restart changed units
     if needs_reload {
         systemctl::daemon_reload()?;
         for entry in &diff_entries {
-            if !matches!(entry.status, DiffStatus::Changed) {
-                continue;
-            }
-            let restart_needed = match entry.unit_type {
-                parse_unit::UnitType::Timer => {
-                    current_map.get(&entry.name).is_none_or(|current| {
-                        timer_needs_restart(current, &sdtabfile.timers[&entry.name])
-                    })
+            match entry.status {
+                DiffStatus::Added => {
+                    // New units need enable + start
+                    let unit_name = match entry.unit_type {
+                        parse_unit::UnitType::Timer => unit::timer_filename(&entry.name),
+                        parse_unit::UnitType::Service => unit::service_filename(&entry.name),
+                    };
+                    systemctl::enable_and_start(&unit_name)?;
                 }
-                parse_unit::UnitType::Service => {
-                    current_map.get(&entry.name).is_none_or(|current| {
-                        service_needs_restart(current, &sdtabfile.services[&entry.name])
-                    })
+                DiffStatus::Changed => {
+                    // Changed units: selective restart
+                    let restart_needed = match entry.unit_type {
+                        parse_unit::UnitType::Timer => {
+                            current_map.get(&entry.name).is_none_or(|current| {
+                                timer_needs_restart(current, &sdtabfile.timers[&entry.name])
+                            })
+                        }
+                        parse_unit::UnitType::Service => {
+                            current_map.get(&entry.name).is_none_or(|current| {
+                                service_needs_restart(current, &sdtabfile.services[&entry.name])
+                            })
+                        }
+                    };
+                    if restart_needed {
+                        let unit_name = match entry.unit_type {
+                            parse_unit::UnitType::Timer => unit::timer_filename(&entry.name),
+                            parse_unit::UnitType::Service => unit::service_filename(&entry.name),
+                        };
+                        systemctl::restart(&unit_name)?;
+                    }
                 }
-            };
-            if restart_needed {
-                let unit_name = match entry.unit_type {
-                    parse_unit::UnitType::Timer => unit::timer_filename(&entry.name),
-                    parse_unit::UnitType::Service => unit::service_filename(&entry.name),
-                };
-                systemctl::restart(&unit_name)?;
+                _ => {}
             }
         }
     }
@@ -209,56 +217,16 @@ pub fn run(file: &str, prune: bool, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-/// Update an existing unit by overwriting files in-place (no stop/remove).
-/// After all updates, the caller does a single daemon-reload + restart.
-fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitType) -> Result<()> {
+/// Write unit files for an entry (both add and update use this).
+/// Does NOT daemon-reload or enable/start — the caller handles that.
+fn write_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitType) -> Result<()> {
     let unit_dir = init::unit_dir()?;
     let dir_path = Path::new(&unit_dir);
-    let cfg = config::load()?;
-    let has_webhook = cfg.notify.slack_webhook.is_some();
 
     match unit_type {
         parse_unit::UnitType::Timer => {
             let entry = &sdtabfile.timers[name];
-            let parsed = cron::parse(&entry.schedule)?;
-            let workdir = entry.workdir.clone();
-            let resolved_command = init::resolve_command(&entry.command)?;
-            let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
-            let display_schedule = parsed.display.clone().unwrap_or_else(|| entry.schedule.clone());
-            let original_command = if resolved_command != entry.command {
-                Some(entry.command.clone())
-            } else {
-                None
-            };
-
-            let on_failure = if !entry.no_notify && has_webhook {
-                Some("sdtab-notify@%n.service".to_string())
-            } else {
-                None
-            };
-
-            let unit_config = unit::UnitConfig {
-                name: name.to_string(),
-                command: resolved_command,
-                workdir,
-                description,
-                cron_expr: Some(display_schedule),
-                schedule: Some(parsed),
-                restart_policy: None,
-                env_file: entry.env_file.clone(),
-                memory_max: entry.memory_max.clone(),
-                cpu_quota: entry.cpu_quota.clone(),
-                io_weight: entry.io_weight.clone(),
-                timeout_stop: entry.timeout_stop.clone(),
-                exec_start_pre: entry.exec_start_pre.clone(),
-                exec_stop_post: entry.exec_stop_post.clone(),
-                log_level_max: entry.log_level_max.clone(),
-                random_delay: entry.random_delay.clone(),
-                env: entry.env.clone(),
-                original_command,
-                on_failure,
-                no_notify: entry.no_notify,
-            };
+            let unit_config = build_timer_config(name, entry)?;
 
             let service_path = dir_path.join(unit::service_filename(name));
             fs::write(&service_path, unit::generate_service(&unit_config))
@@ -270,43 +238,7 @@ fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitT
         }
         parse_unit::UnitType::Service => {
             let entry = &sdtabfile.services[name];
-            let workdir = entry.workdir.clone();
-            let resolved_command = init::resolve_command(&entry.command)?;
-            let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
-            let original_command = if resolved_command != entry.command {
-                Some(entry.command.clone())
-            } else {
-                None
-            };
-
-            let on_failure = if !entry.no_notify && has_webhook {
-                Some("sdtab-notify@%n.service".to_string())
-            } else {
-                None
-            };
-
-            let unit_config = unit::UnitConfig {
-                name: name.to_string(),
-                command: resolved_command,
-                workdir,
-                description,
-                cron_expr: None,
-                schedule: None,
-                restart_policy: entry.restart.clone(),
-                env_file: entry.env_file.clone(),
-                memory_max: entry.memory_max.clone(),
-                cpu_quota: entry.cpu_quota.clone(),
-                io_weight: entry.io_weight.clone(),
-                timeout_stop: entry.timeout_stop.clone(),
-                exec_start_pre: entry.exec_start_pre.clone(),
-                exec_stop_post: entry.exec_stop_post.clone(),
-                log_level_max: entry.log_level_max.clone(),
-                random_delay: None,
-                env: entry.env.clone(),
-                original_command,
-                on_failure,
-                no_notify: entry.no_notify,
-            };
+            let unit_config = build_service_config(name, entry)?;
 
             let service_path = dir_path.join(unit::service_filename(name));
             fs::write(&service_path, unit::generate_daemon_service(&unit_config))
@@ -316,56 +248,86 @@ fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitT
     Ok(())
 }
 
-fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitType) -> Result<()> {
-    match unit_type {
-        parse_unit::UnitType::Timer => {
-            let entry = &sdtabfile.timers[name];
-            add::run(add::AddOptions {
-                schedule: entry.schedule.clone(),
-                command: entry.command.clone(),
-                name: Some(name.to_string()),
-                workdir: Some(entry.workdir.clone()),
-                description: entry.description.clone(),
-                env_file: entry.env_file.clone(),
-                restart: None,
-                memory_max: entry.memory_max.clone(),
-                cpu_quota: entry.cpu_quota.clone(),
-                io_weight: entry.io_weight.clone(),
-                timeout_stop: entry.timeout_stop.clone(),
-                exec_start_pre: entry.exec_start_pre.clone(),
-                exec_stop_post: entry.exec_stop_post.clone(),
-                log_level_max: entry.log_level_max.clone(),
-                random_delay: entry.random_delay.clone(),
-                env: entry.env.clone(),
-                no_notify: entry.no_notify,
-                dry_run: false,
-            })?;
-        }
-        parse_unit::UnitType::Service => {
-            let entry = &sdtabfile.services[name];
-            add::run(add::AddOptions {
-                schedule: "@service".to_string(),
-                command: entry.command.clone(),
-                name: Some(name.to_string()),
-                workdir: Some(entry.workdir.clone()),
-                description: entry.description.clone(),
-                env_file: entry.env_file.clone(),
-                restart: entry.restart.clone(),
-                memory_max: entry.memory_max.clone(),
-                cpu_quota: entry.cpu_quota.clone(),
-                io_weight: entry.io_weight.clone(),
-                timeout_stop: entry.timeout_stop.clone(),
-                exec_start_pre: entry.exec_start_pre.clone(),
-                exec_stop_post: entry.exec_stop_post.clone(),
-                log_level_max: entry.log_level_max.clone(),
-                random_delay: None,
-                env: entry.env.clone(),
-                no_notify: entry.no_notify,
-                dry_run: false,
-            })?;
-        }
+fn resolve_on_failure(no_notify: bool) -> Result<Option<String>> {
+    if no_notify {
+        return Ok(None);
     }
-    Ok(())
+    let cfg = config::load()?;
+    if cfg.notify.slack_webhook.is_some() {
+        Ok(Some("sdtab-notify@%n.service".to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn build_timer_config(name: &str, entry: &TimerEntry) -> Result<unit::UnitConfig> {
+    let parsed = cron::parse(&entry.schedule)?;
+    let resolved_command = init::resolve_command(&entry.command)?;
+    let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
+    let display_schedule = parsed.display.clone().unwrap_or_else(|| entry.schedule.clone());
+    let original_command = if resolved_command != entry.command {
+        Some(entry.command.clone())
+    } else {
+        None
+    };
+    let on_failure = resolve_on_failure(entry.no_notify)?;
+
+    Ok(unit::UnitConfig {
+        name: name.to_string(),
+        command: resolved_command,
+        workdir: entry.workdir.clone(),
+        description,
+        cron_expr: Some(display_schedule),
+        schedule: Some(parsed),
+        restart_policy: None,
+        env_file: entry.env_file.clone(),
+        memory_max: entry.memory_max.clone(),
+        cpu_quota: entry.cpu_quota.clone(),
+        io_weight: entry.io_weight.clone(),
+        timeout_stop: entry.timeout_stop.clone(),
+        exec_start_pre: entry.exec_start_pre.clone(),
+        exec_stop_post: entry.exec_stop_post.clone(),
+        log_level_max: entry.log_level_max.clone(),
+        random_delay: entry.random_delay.clone(),
+        env: entry.env.clone(),
+        original_command,
+        on_failure,
+        no_notify: entry.no_notify,
+    })
+}
+
+fn build_service_config(name: &str, entry: &ServiceEntry) -> Result<unit::UnitConfig> {
+    let resolved_command = init::resolve_command(&entry.command)?;
+    let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
+    let original_command = if resolved_command != entry.command {
+        Some(entry.command.clone())
+    } else {
+        None
+    };
+    let on_failure = resolve_on_failure(entry.no_notify)?;
+
+    Ok(unit::UnitConfig {
+        name: name.to_string(),
+        command: resolved_command,
+        workdir: entry.workdir.clone(),
+        description,
+        cron_expr: None,
+        schedule: None,
+        restart_policy: entry.restart.clone(),
+        env_file: entry.env_file.clone(),
+        memory_max: entry.memory_max.clone(),
+        cpu_quota: entry.cpu_quota.clone(),
+        io_weight: entry.io_weight.clone(),
+        timeout_stop: entry.timeout_stop.clone(),
+        exec_start_pre: entry.exec_start_pre.clone(),
+        exec_stop_post: entry.exec_stop_post.clone(),
+        log_level_max: entry.log_level_max.clone(),
+        random_delay: None,
+        env: entry.env.clone(),
+        original_command,
+        on_failure,
+        no_notify: entry.no_notify,
+    })
 }
 
 /// Timer schedule or random_delay changed → need to restart the .timer unit.
