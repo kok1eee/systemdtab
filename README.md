@@ -35,12 +35,14 @@ web     service  @service     node server.js        ● active
 ## Install
 
 ```bash
-cargo install --git https://github.com/kok1eee/systemdtab
-```
+# Pre-built binary (no Rust required)
+curl -L https://github.com/kok1eee/systemdtab/releases/latest/download/sdtab-x86_64-linux \
+  -o ~/.local/bin/sdtab && chmod +x ~/.local/bin/sdtab
 
-Or build from source:
+# Or via Cargo
+cargo install systemdtab
 
-```bash
+# Or build from source
 git clone https://github.com/kok1eee/systemdtab
 cd systemdtab
 cargo build --release
@@ -50,7 +52,7 @@ cp target/release/sdtab ~/.local/bin/
 ### Requirements
 
 - Linux with systemd (user session only — system-wide units are not supported)
-- Rust 1.70+
+- `~/.local/bin` in your `$PATH`
 
 > **Note**: sdtab manages **user-level** units only (`systemctl --user`). It cannot create or manage system-wide services that require root privileges. If `loginctl enable-linger` fails, ask your system administrator to enable it for your user.
 
@@ -91,9 +93,9 @@ sdtab apply Sdtabfile.toml
 | `sdtab init [--slack-webhook URL] [--slack-mention USER_ID]` | Enable linger, create directories, set up notifications |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | Add a timer |
 | `sdtab add "@service" "<command>" [--dry-run]` | Add a long-running service |
-| `sdtab list [--json]` | List all managed timers and services (long commands are truncated) |
+| `sdtab list [--json] [--sort time\|name]` | List all managed timers and services (default: sorted by next run time) |
 | `sdtab status <name>` | Show detailed status with next 5 run times |
-| `sdtab edit <name>` | Edit unit file with $EDITOR |
+| `sdtab edit <name>` | Edit unit file with $EDITOR (see caveat below) |
 | `sdtab logs <name> [-f] [-n N]` | View logs (journalctl) |
 | `sdtab restart <name>` | Restart a service |
 | `sdtab enable <name>` | Enable a timer or service |
@@ -103,6 +105,8 @@ sdtab apply Sdtabfile.toml
 | `sdtab apply <file> [--prune] [--dry-run]` | Apply config from TOML |
 
 > `sdtab remove` stops and disables the unit before deleting files. `sdtab apply --prune` only removes units with the `sdtab-` prefix — manually created systemd units are never touched.
+
+> **`sdtab edit` caveat**: sdtab stores metadata (original cron expression, command, etc.) as comments at the top of the `.service` file (`# sdtab:cron=`, `# sdtab:command=`). If you delete these comments during editing, `sdtab list` and `sdtab export` will show `?` for the missing fields. The unit itself will still work — only sdtab's bookkeeping is affected.
 
 > `sdtab apply` updates changed units **in-place** (overwrite → daemon-reload) without stopping them first. Only units that actually need a restart are restarted: for services, description-only changes skip restart; for timers, service-side changes (command, env, etc.) take effect on the next trigger without restarting the timer.
 
@@ -118,11 +122,19 @@ Standard cron expressions and convenient shortcuts:
 | `0 9 * * *` | Daily at 9:00 |
 | `0 9 * * Mon-Fri` | Weekdays at 9:00 |
 | `@daily` | Once a day (midnight) |
+| `@daily/9` | Daily at 9:00 |
+| `@daily/9:30` | Daily at 9:30 |
 | `@hourly` | Once an hour |
 | `@reboot` | On system boot |
-| `@daily/3` | Daily at 3:00 |
+| `@mon/13` | Every Monday at 13:00 |
+| `@tue/18` | Every Tuesday at 18:00 |
 | `@weekly/Mon,Wed` | Every Monday and Wednesday |
+| `@1st/8` | 1st of every month at 8:00 |
+| `@20th/8` | 20th of every month at 8:00 |
+| `@26th/11:30` | 26th of every month at 11:30 |
 | `@service` | Long-running service (not a timer) |
+
+Weekdays use English abbreviations (`@mon`, `@tue`, ..., `@sun`). Dates use English ordinals (`@1st`, `@2nd`, `@20th`, `@26th`). The `/` separator always means "at this time".
 
 ## Add Options
 

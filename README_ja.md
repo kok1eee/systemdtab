@@ -35,12 +35,14 @@ web     service  @service     node server.js        ● active
 ## インストール
 
 ```bash
-cargo install --git https://github.com/kok1eee/systemdtab
-```
+# プリビルドバイナリ（Rust不要）
+curl -L https://github.com/kok1eee/systemdtab/releases/latest/download/sdtab-x86_64-linux \
+  -o ~/.local/bin/sdtab && chmod +x ~/.local/bin/sdtab
 
-ソースからビルドする場合:
+# または Cargo 経由
+cargo install systemdtab
 
-```bash
+# またはソースからビルド
 git clone https://github.com/kok1eee/systemdtab
 cd systemdtab
 cargo build --release
@@ -50,7 +52,7 @@ cp target/release/sdtab ~/.local/bin/
 ### 必要環境
 
 - systemd が動作する Linux（ユーザーセッション限定 — システムレベルのユニットは非対応）
-- Rust 1.70+
+- `~/.local/bin` が `$PATH` に含まれていること
 
 > **注意**: sdtab は **ユーザーレベル** のユニットのみを管理します（`systemctl --user`）。root 権限が必要なシステムサービスの作成・管理はできません。`loginctl enable-linger` が失敗する場合は、システム管理者にリンガーの有効化を依頼してください。
 
@@ -91,9 +93,9 @@ sdtab apply Sdtabfile.toml
 | `sdtab init [--slack-webhook URL] [--slack-mention USER_ID]` | linger 有効化 + ディレクトリ作成 + Slack通知設定 |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | タイマーを追加 |
 | `sdtab add "@service" "<command>" [--dry-run]` | 常駐サービスを追加 |
-| `sdtab list [--json]` | 管理中のタイマー・サービス一覧（長いコマンドは省略表示） |
+| `sdtab list [--json] [--sort time\|name]` | 管理中のタイマー・サービス一覧（デフォルト: 次回実行時刻順） |
 | `sdtab status <name>` | 詳細ステータス表示（次回5回分の実行時刻付き） |
-| `sdtab edit <name>` | $EDITOR でユニットファイルを編集 |
+| `sdtab edit <name>` | $EDITOR でユニットファイルを編集（下記注意参照） |
 | `sdtab logs <name> [-f] [-n N]` | ログ表示（journalctl） |
 | `sdtab restart <name>` | サービスを再起動 |
 | `sdtab enable <name>` | タイマー・サービスを有効化 |
@@ -103,6 +105,8 @@ sdtab apply Sdtabfile.toml
 | `sdtab apply <file> [--prune] [--dry-run]` | TOML から一括適用 |
 
 > `sdtab remove` は実行中のユニットを停止・無効化してからファイルを削除します。`sdtab apply --prune` は `sdtab-` プレフィックス付きのユニットのみを削除対象とし、手動で作成した systemd ユニットには影響しません。
+
+> **`sdtab edit` の注意**: sdtab はメタデータ（元の cron 式、コマンドなど）をサービスファイルの先頭にコメントとして保存しています（`# sdtab:cron=`, `# sdtab:command=`）。編集時にこのコメントを削除すると、`sdtab list` や `sdtab export` で該当フィールドが `?` 表示になります。ユニット自体の動作には影響しません。
 
 > `sdtab apply` は変更されたユニットを**停止せずにファイルを上書き → daemon-reload** で更新します。restart が必要なユニットだけを再起動します: サービスの description のみの変更は restart をスキップ、タイマーのサービス側変更（コマンド、env など）は次回トリガーで反映されるため timer の restart は不要です。
 
@@ -118,11 +122,19 @@ sdtab apply Sdtabfile.toml
 | `0 9 * * *` | 毎日 9:00 |
 | `0 9 * * Mon-Fri` | 平日 9:00 |
 | `@daily` | 1日1回（深夜0時） |
+| `@daily/9` | 毎日 9:00 |
+| `@daily/9:30` | 毎日 9:30 |
 | `@hourly` | 1時間ごと |
 | `@reboot` | システム起動時 |
-| `@daily/3` | 毎日 3:00 |
+| `@mon/13` | 毎週月曜 13:00 |
+| `@tue/18` | 毎週火曜 18:00 |
 | `@weekly/Mon,Wed` | 毎週月曜と水曜 |
+| `@1st/8` | 毎月1日 8:00 |
+| `@20th/8` | 毎月20日 8:00 |
+| `@26th/11:30` | 毎月26日 11:30 |
 | `@service` | 常駐サービス（タイマーではない） |
+
+曜日は英語略称（`@mon`, `@tue`, ..., `@sun`）、日付は英語序数（`@1st`, `@2nd`, `@20th`, `@26th`）で指定。`/` は「この時刻に」を意味する。
 
 ## add オプション
 
