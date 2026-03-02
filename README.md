@@ -46,8 +46,10 @@ cp target/release/sdtab ~/.local/bin/
 
 ### Requirements
 
-- Linux with systemd (user session)
+- Linux with systemd (user session only — system-wide units are not supported)
 - Rust 1.70+
+
+> **Note**: sdtab manages **user-level** units only (`systemctl --user`). It cannot create or manage system-wide services that require root privileges. If `loginctl enable-linger` fails, ask your system administrator to enable it for your user.
 
 ## Quick Start
 
@@ -83,16 +85,18 @@ sdtab apply Sdtabfile.toml
 | `sdtab init` | Enable linger and create directories |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | Add a timer |
 | `sdtab add "@service" "<command>" [--dry-run]` | Add a long-running service |
-| `sdtab list` | List all managed timers and services |
+| `sdtab list [--json]` | List all managed timers and services |
 | `sdtab status <name>` | Show detailed status with next 5 run times |
 | `sdtab edit <name>` | Edit unit file with $EDITOR |
 | `sdtab logs <name> [-f] [-n N]` | View logs (journalctl) |
 | `sdtab restart <name>` | Restart a service |
 | `sdtab enable <name>` | Enable a timer or service |
 | `sdtab disable <name>` | Disable (keep files) |
-| `sdtab remove <name>` | Remove completely |
+| `sdtab remove <name>` | Stop, disable, and remove unit files |
 | `sdtab export [-o <file>]` | Export config as TOML |
 | `sdtab apply <file> [--prune] [--dry-run]` | Apply config from TOML |
+
+> `sdtab remove` stops and disables the unit before deleting files. `sdtab apply --prune` only removes units with the `sdtab-` prefix — manually created systemd units are never touched.
 
 ## Schedule Syntax
 
@@ -146,7 +150,7 @@ restart = "on-failure"
 env_file = "/home/user/.env"
 ```
 
-Use `sdtab apply Sdtabfile.toml` to recreate all units from this file. Add `--prune` to remove units not in the file.
+Use `sdtab apply Sdtabfile.toml` to recreate all units from this file. Add `--prune` to remove sdtab-managed units not in the file.
 
 ## How It Works
 
@@ -161,23 +165,35 @@ sdtab generates standard systemd unit files under `~/.config/systemd/user/` with
 
 Metadata is stored as comments in the service file (`# sdtab:type=`, `# sdtab:cron=`, etc.), so sdtab can reconstruct the original configuration without an external database.
 
-## AI Agent Ready
+## Comparison with Alternatives
 
-sdtab is designed to work with AI coding agents (Claude Code, Cline, Devin, Cursor, etc.) out of the box.
+| | sdtab | crontab | [systemd-cron](https://github.com/systemd-cron/systemd-cron) | [fcron](http://fcron.free.fr/) | [jobber](https://github.com/dshearer/jobber) |
+|---|---|---|---|---|---|
+| One command to create timer | Yes | Yes | No (uses crontab files) | Yes | Yes |
+| Long-running services | Yes (`@service`) | No | No (oneshot only) | No | No |
+| Resource limits (memory/CPU) | `--memory-max`, `--cpu-quota` | No | Manual (edit unit files) | No | No |
+| Export/import config | Yes (TOML) | `crontab -l` (text) | No | No | No |
+| Machine-readable output | `--json` | No | No | No | No |
+| Backend | systemd native | crond | systemd (generated) | own daemon | own daemon |
+| User-level without root | Yes | Yes | System-level | Needs root | Needs root |
 
-**The problem**: systemd is notoriously hard for AI agents to operate. Creating a timer requires writing two files in the correct format, placing them in the right directory, running `daemon-reload`, then `enable --now`. One mistake and nothing works.
+## Testing
 
-**The solution**: `sdtab add "0 9 * * *" "./backup.sh"` — one command, done.
-
-### What's included
-
-- **`CLAUDE.md`** — project instructions that AI agents read automatically. Contains the full command reference, architecture, and design decisions.
-- **Skill file** — a pre-built prompt (`sdtab.md`) that teaches Claude Code how to manage timers and services through sdtab.
-- **`--dry-run`** — lets agents preview generated unit files before committing.
-- **`--json`** — machine-readable output for programmatic use.
+The cron parser, unit file generation, and TOML serialization are covered by 71 unit tests:
 
 ```bash
-# Agent can list units and parse the output
+cargo test
+```
+
+## AI Agent Support
+
+sdtab includes files for AI coding agents (Claude Code, Cursor, etc.):
+
+- **`CLAUDE.md`** — project instructions with full command reference
+- **`--dry-run`** — preview generated unit files before committing
+- **`--json`** — machine-readable output for programmatic use
+
+```bash
 sdtab list --json
 ```
 
@@ -187,16 +203,6 @@ sdtab list --json
   {"name":"web","type":"service","schedule":"@service","command":"node index.js","status":"active"}
 ]
 ```
-
-### Comparison
-
-| Feature | raw systemd | crontab | sdtab |
-|---------|------------|---------|-------|
-| Timer + service in one command | No (2 files + 3 commands) | N/A (no services) | Yes |
-| AI agent friendly | No | Partial | Yes |
-| Export/import config | No | No | Yes (TOML) |
-| Resource limits | Manual | No | `--memory-max`, `--cpu-quota` |
-| Machine-readable output | `systemctl show` (verbose) | No | `--json` |
 
 ## License
 

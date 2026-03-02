@@ -1,9 +1,12 @@
 use anyhow::Result;
+use serde::Serialize;
 
 use crate::{parse_unit, systemctl, unit};
 
+#[derive(Serialize)]
 struct Entry {
     name: String,
+    #[serde(rename = "type")]
     type_str: &'static str,
     schedule: String,
     command: String,
@@ -106,29 +109,8 @@ fn print_table(entries: &[Entry]) {
 }
 
 fn print_json(entries: &[Entry]) {
-    println!("[");
-    for (i, entry) in entries.iter().enumerate() {
-        let comma = if i + 1 < entries.len() { "," } else { "" };
-        println!(
-            "  {{\"name\":{},\"type\":\"{}\",\"schedule\":{},\"command\":{},\"status\":{}}}{}",
-            json_str(&entry.name),
-            entry.type_str,
-            json_str(&entry.schedule),
-            json_str(&entry.command),
-            json_str(&entry.status),
-            comma,
-        );
-    }
-    println!("]");
-}
-
-fn json_str(s: &str) -> String {
-    format!(
-        "\"{}\"",
-        s.replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('\n', "\\n")
-    )
+    let json = serde_json::to_string_pretty(entries).expect("Failed to serialize JSON");
+    println!("{}", json);
 }
 
 fn format_next_run(raw: &str) -> String {
