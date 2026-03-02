@@ -1,5 +1,7 @@
 # sdtab
 
+[日本語](README_ja.md)
+
 Manage systemd user timers and services like crontab.
 
 ```bash
