@@ -51,8 +51,19 @@ cp target/release/sdtab ~/.local/bin/
 
 ### Requirements
 
-- Linux with systemd (user session only — system-wide units are not supported)
+- Linux with **systemd 244+** (user session only — system-wide units are not supported)
 - `~/.local/bin` in your `$PATH`
+
+Some options require newer systemd versions:
+
+| Option | Requires | Notes |
+|--------|----------|-------|
+| `--memory-max` | systemd 244+ (cgroups v2) | `MemoryMax=` directive |
+| `--cpu-quota` | systemd 244+ (cgroups v2) | `CPUQuota=` directive |
+| `--io-weight` | systemd 247+ (cgroups v2) | `IOWeight=` directive |
+| `--log-level-max` | systemd 239+ | `LogLevelMax=` directive |
+
+> **Amazon Linux 2** (systemd 219) is **not supported** — it lacks cgroups v2 and several required directives. Use **Amazon Linux 2023** (systemd 252) or newer.
 
 > **Note**: sdtab manages **user-level** units only (`systemctl --user`). It cannot create or manage system-wide services that require root privileges. If `loginctl enable-linger` fails, ask your system administrator to enable it for your user.
 

@@ -51,8 +51,19 @@ cp target/release/sdtab ~/.local/bin/
 
 ### 必要環境
 
-- systemd が動作する Linux（ユーザーセッション限定 — システムレベルのユニットは非対応）
+- **systemd 244+** が動作する Linux（ユーザーセッション限定 — システムレベルのユニットは非対応）
 - `~/.local/bin` が `$PATH` に含まれていること
+
+一部オプションはより新しい systemd が必要です：
+
+| オプション | 必要バージョン | 備考 |
+|-----------|--------------|------|
+| `--memory-max` | systemd 244+（cgroups v2） | `MemoryMax=` ディレクティブ |
+| `--cpu-quota` | systemd 244+（cgroups v2） | `CPUQuota=` ディレクティブ |
+| `--io-weight` | systemd 247+（cgroups v2） | `IOWeight=` ディレクティブ |
+| `--log-level-max` | systemd 239+ | `LogLevelMax=` ディレクティブ |
+
+> **Amazon Linux 2**（systemd 219）は**非対応**です。cgroups v2 および必要なディレクティブが不足しています。**Amazon Linux 2023**（systemd 252）以降を使用してください。
 
 > **注意**: sdtab は **ユーザーレベル** のユニットのみを管理します（`systemctl --user`）。root 権限が必要なシステムサービスの作成・管理はできません。`loginctl enable-linger` が失敗する場合は、システム管理者にリンガーの有効化を依頼してください。
 
