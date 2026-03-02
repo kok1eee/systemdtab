@@ -101,6 +101,8 @@ fn setup_notify(webhook: Option<&str>, mention: Option<&str>) -> Result<()> {
     };
 
     // Generate template unit sdtab-notify@.service
+    // Uses Environment= for systemd specifiers (%i, %H) to avoid shell injection,
+    // and jq for safe JSON construction (handles special chars in hostname etc.)
     let unit_dir = unit_dir()?;
     let template_path = format!("{}/sdtab-notify@.service", unit_dir);
     let template = format!(
@@ -109,8 +111,12 @@ fn setup_notify(webhook: Option<&str>, mention: Option<&str>) -> Result<()> {
          \n\
          [Service]\n\
          Type=oneshot\n\
-         ExecStart=/bin/sh -c 'curl -s -X POST -H \"Content-Type: application/json\" \
-         -d \"{{\\\"text\\\":\\\"{mention_prefix}[sdtab] %i failed on %H\\\"}}\" \"$SDTAB_SLACK_WEBHOOK\"'\n\
+         Environment=\"SDTAB_UNIT=%i\" \"SDTAB_HOST=%H\" \"SDTAB_MENTION={mention_prefix}\"\n\
+         ExecStart=/bin/sh -c 'printf \"%%s\" \
+         \"$SDTAB_MENTION[sdtab] $SDTAB_UNIT failed on $SDTAB_HOST\" \
+         | jq -Rs \"{{text:.}}\" \
+         | curl -s -X POST -H \"Content-Type: application/json\" -d @- \
+         \"$SDTAB_SLACK_WEBHOOK\"'\n\
          EnvironmentFile={env_path}\n",
         mention_prefix = mention_prefix,
         env_path = notify_env_path

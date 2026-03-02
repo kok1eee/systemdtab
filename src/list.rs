@@ -16,7 +16,7 @@ struct Entry {
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     #[serde(skip)]
-    sort_key: u64, // epoch usec for time sort (0 = service/unknown)
+    sort_key: u64, // datetime sort key for timers, u64::MAX for services
 }
 
 pub fn run(json: bool, sort: SortOrder) -> Result<()> {
@@ -39,7 +39,7 @@ pub fn run(json: bool, sort: SortOrder) -> Result<()> {
                 let service_unit = unit::service_filename(&unit.name);
                 let active_state = systemctl::show_property(&service_unit, "ActiveState")
                     .unwrap_or_else(|_| "unknown".to_string());
-                ("service", "@service".to_string(), active_state, 0u64)
+                ("service", "@service".to_string(), active_state, u64::MAX)
             }
             parse_unit::UnitType::Timer => {
                 let timer_unit = unit::timer_filename(&unit.name);
@@ -74,14 +74,9 @@ pub fn run(json: bool, sort: SortOrder) -> Result<()> {
     // Sort
     match sort {
         SortOrder::Time => {
-            // Services (sort_key=0) first, then timers by next run time
+            // Timers by next run time, then services at the end
             entries.sort_by(|a, b| {
-                let type_ord = a.sort_key.cmp(&b.sort_key);
-                if type_ord == std::cmp::Ordering::Equal {
-                    a.name.cmp(&b.name)
-                } else {
-                    type_ord
-                }
+                a.sort_key.cmp(&b.sort_key).then(a.name.cmp(&b.name))
             });
         }
         SortOrder::Name => {
