@@ -63,7 +63,7 @@ pub fn run(slack_webhook: Option<&str>, slack_mention: Option<&str>) -> Result<(
 fn setup_notify(webhook: Option<&str>, mention: Option<&str>) -> Result<()> {
     // Notification template requires jq for safe JSON construction
     if Command::new("which").arg("jq").output().map_or(true, |o| !o.status.success()) {
-        bail!("jq is required for Slack notifications. Install it with: sudo yum install -y jq");
+        bail!("jq is required for Slack notifications. Install it with your package manager (e.g., sudo apt install jq / sudo yum install jq)");
     }
 
     // Load existing config and update
