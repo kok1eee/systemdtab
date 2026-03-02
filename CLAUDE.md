@@ -6,7 +6,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 
 | コマンド | 機能 |
 |---------|------|
-| `sdtab init` | linger 有効化 + ディレクトリ作成 |
+| `sdtab init` | linger 有効化 + ディレクトリ作成 + Claude Code スキルインストール |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | タイマー追加 |
 | `sdtab add "@service" "<command>" [--dry-run]` | 常駐サービス追加 |
 | `sdtab list [--json]` | 管理中タイマー・サービス一覧 |

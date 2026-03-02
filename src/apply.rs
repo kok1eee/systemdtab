@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
 use crate::sdtabfile::{self, Sdtabfile, ServiceEntry, TimerEntry};
-use crate::{add, parse_unit, remove};
+use crate::{add, cron, init, parse_unit, remove, systemctl, unit};
 
 enum DiffStatus {
     Added,
@@ -151,12 +152,13 @@ pub fn run(file: &str, prune: bool, dry_run: bool) -> Result<()> {
     }
 
     // Apply changes
+    let mut needs_reload = false;
     for entry in &diff_entries {
         match entry.status {
             DiffStatus::Unchanged => {}
             DiffStatus::Changed => {
-                remove::run(&entry.name)?;
-                apply_entry(&sdtabfile, &entry.name, &entry.unit_type)?;
+                update_entry(&sdtabfile, &entry.name, &entry.unit_type)?;
+                needs_reload = true;
             }
             DiffStatus::Added => {
                 apply_entry(&sdtabfile, &entry.name, &entry.unit_type)?;
@@ -169,12 +171,130 @@ pub fn run(file: &str, prune: bool, dry_run: bool) -> Result<()> {
         }
     }
 
+    // Reload once after all file writes, then restart only units that need it
+    if needs_reload {
+        systemctl::daemon_reload()?;
+        for entry in &diff_entries {
+            if !matches!(entry.status, DiffStatus::Changed) {
+                continue;
+            }
+            let restart_needed = match entry.unit_type {
+                parse_unit::UnitType::Timer => {
+                    current_map.get(&entry.name).is_none_or(|current| {
+                        timer_needs_restart(current, &sdtabfile.timers[&entry.name])
+                    })
+                }
+                parse_unit::UnitType::Service => {
+                    current_map.get(&entry.name).is_none_or(|current| {
+                        service_needs_restart(current, &sdtabfile.services[&entry.name])
+                    })
+                }
+            };
+            if restart_needed {
+                let unit_name = match entry.unit_type {
+                    parse_unit::UnitType::Timer => unit::timer_filename(&entry.name),
+                    parse_unit::UnitType::Service => unit::service_filename(&entry.name),
+                };
+                systemctl::restart(&unit_name)?;
+            }
+        }
+    }
+
     println!();
     println!(
         "Applied: {} added, {} updated, {} unchanged, {} removed",
         added, changed, unchanged, removed
     );
 
+    Ok(())
+}
+
+/// Update an existing unit by overwriting files in-place (no stop/remove).
+/// After all updates, the caller does a single daemon-reload + restart.
+fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitType) -> Result<()> {
+    let unit_dir = init::unit_dir()?;
+    let dir_path = Path::new(&unit_dir);
+
+    match unit_type {
+        parse_unit::UnitType::Timer => {
+            let entry = &sdtabfile.timers[name];
+            let parsed = cron::parse(&entry.schedule)?;
+            let workdir = entry.workdir.clone();
+            let resolved_command = init::resolve_command(&entry.command)?;
+            let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
+            let display_schedule = parsed.display.clone().unwrap_or_else(|| entry.schedule.clone());
+            let original_command = if resolved_command != entry.command {
+                Some(entry.command.clone())
+            } else {
+                None
+            };
+
+            let config = unit::UnitConfig {
+                name: name.to_string(),
+                command: resolved_command,
+                workdir,
+                description,
+                cron_expr: Some(display_schedule),
+                schedule: Some(parsed),
+                restart_policy: None,
+                env_file: entry.env_file.clone(),
+                memory_max: entry.memory_max.clone(),
+                cpu_quota: entry.cpu_quota.clone(),
+                io_weight: entry.io_weight.clone(),
+                timeout_stop: entry.timeout_stop.clone(),
+                exec_start_pre: entry.exec_start_pre.clone(),
+                exec_stop_post: entry.exec_stop_post.clone(),
+                log_level_max: entry.log_level_max.clone(),
+                random_delay: entry.random_delay.clone(),
+                env: entry.env.clone(),
+                original_command,
+            };
+
+            let service_path = dir_path.join(unit::service_filename(name));
+            fs::write(&service_path, unit::generate_service(&config))
+                .with_context(|| format!("Failed to write {}", service_path.display()))?;
+
+            let timer_path = dir_path.join(unit::timer_filename(name));
+            fs::write(&timer_path, unit::generate_timer(&config))
+                .with_context(|| format!("Failed to write {}", timer_path.display()))?;
+        }
+        parse_unit::UnitType::Service => {
+            let entry = &sdtabfile.services[name];
+            let workdir = entry.workdir.clone();
+            let resolved_command = init::resolve_command(&entry.command)?;
+            let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
+            let original_command = if resolved_command != entry.command {
+                Some(entry.command.clone())
+            } else {
+                None
+            };
+
+            let config = unit::UnitConfig {
+                name: name.to_string(),
+                command: resolved_command,
+                workdir,
+                description,
+                cron_expr: None,
+                schedule: None,
+                restart_policy: entry.restart.clone(),
+                env_file: entry.env_file.clone(),
+                memory_max: entry.memory_max.clone(),
+                cpu_quota: entry.cpu_quota.clone(),
+                io_weight: entry.io_weight.clone(),
+                timeout_stop: entry.timeout_stop.clone(),
+                exec_start_pre: entry.exec_start_pre.clone(),
+                exec_stop_post: entry.exec_stop_post.clone(),
+                log_level_max: entry.log_level_max.clone(),
+                random_delay: None,
+                env: entry.env.clone(),
+                original_command,
+            };
+
+            let service_path = dir_path.join(unit::service_filename(name));
+            fs::write(&service_path, unit::generate_daemon_service(&config))
+                .with_context(|| format!("Failed to write {}", service_path.display()))?;
+        }
+    }
     Ok(())
 }
 
@@ -226,6 +346,31 @@ fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitTy
         }
     }
     Ok(())
+}
+
+/// Timer schedule or random_delay changed → need to restart the .timer unit.
+/// Service-only changes (command, env, etc.) are picked up on next trigger via daemon-reload.
+fn timer_needs_restart(current: &parse_unit::ParsedUnit, desired: &TimerEntry) -> bool {
+    let cron = current.cron_expr.as_deref().unwrap_or("");
+    cron != desired.schedule || current.random_delay != desired.random_delay
+}
+
+/// Anything other than description changed → need to restart the service.
+fn service_needs_restart(current: &parse_unit::ParsedUnit, desired: &ServiceEntry) -> bool {
+    let current_restart = current.restart_policy.as_deref().unwrap_or("always");
+    let desired_restart = desired.restart.as_deref().unwrap_or("always");
+    current.command != desired.command
+        || current.workdir != desired.workdir
+        || current_restart != desired_restart
+        || current.env_file != desired.env_file
+        || current.memory_max != desired.memory_max
+        || current.cpu_quota != desired.cpu_quota
+        || current.io_weight != desired.io_weight
+        || current.timeout_stop != desired.timeout_stop
+        || current.exec_start_pre != desired.exec_start_pre
+        || current.exec_stop_post != desired.exec_stop_post
+        || current.log_level_max != desired.log_level_max
+        || current.env != desired.env
 }
 
 fn timer_matches(current: &parse_unit::ParsedUnit, desired: &TimerEntry) -> bool {
@@ -359,5 +504,126 @@ workdir = "/home/user/app"
         assert!(sdtabfile::desc_matches("daily report", "echo hello", &Some("daily report".to_string())));
         assert!(!sdtabfile::desc_matches("wrong", "echo hello", &Some("daily report".to_string())));
         assert!(!sdtabfile::desc_matches("different", "echo hello", &None));
+    }
+
+    fn make_parsed_unit(name: &str, unit_type: parse_unit::UnitType) -> parse_unit::ParsedUnit {
+        parse_unit::ParsedUnit {
+            name: name.to_string(),
+            unit_type,
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "./run.sh".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            restart_policy: None,
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
+            env: vec![],
+        }
+    }
+
+    fn make_timer_entry() -> TimerEntry {
+        TimerEntry {
+            schedule: "0 9 * * *".to_string(),
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: None,
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
+            env: vec![],
+        }
+    }
+
+    fn make_service_entry() -> ServiceEntry {
+        ServiceEntry {
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: None,
+            restart: None,
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            env: vec![],
+        }
+    }
+
+    #[test]
+    fn test_timer_needs_restart_schedule_changed() {
+        let current = make_parsed_unit("report", parse_unit::UnitType::Timer);
+        let mut desired = make_timer_entry();
+        desired.schedule = "0 10 * * *".to_string();
+        assert!(timer_needs_restart(&current, &desired));
+    }
+
+    #[test]
+    fn test_timer_needs_restart_random_delay_changed() {
+        let current = make_parsed_unit("report", parse_unit::UnitType::Timer);
+        let mut desired = make_timer_entry();
+        desired.random_delay = Some("5m".to_string());
+        assert!(timer_needs_restart(&current, &desired));
+    }
+
+    #[test]
+    fn test_timer_no_restart_command_changed() {
+        // Command change in a timer only affects the .service file,
+        // which is picked up on next trigger — no timer restart needed
+        let current = make_parsed_unit("report", parse_unit::UnitType::Timer);
+        let mut desired = make_timer_entry();
+        desired.command = "./new-run.sh".to_string();
+        assert!(!timer_needs_restart(&current, &desired));
+    }
+
+    #[test]
+    fn test_timer_no_restart_description_changed() {
+        let current = make_parsed_unit("report", parse_unit::UnitType::Timer);
+        let desired = TimerEntry {
+            description: Some("new description".to_string()),
+            ..make_timer_entry()
+        };
+        assert!(!timer_needs_restart(&current, &desired));
+    }
+
+    #[test]
+    fn test_service_needs_restart_command_changed() {
+        let current = make_parsed_unit("web", parse_unit::UnitType::Service);
+        let mut desired = make_service_entry();
+        desired.command = "node new-server.js".to_string();
+        assert!(service_needs_restart(&current, &desired));
+    }
+
+    #[test]
+    fn test_service_needs_restart_env_changed() {
+        let current = make_parsed_unit("web", parse_unit::UnitType::Service);
+        let mut desired = make_service_entry();
+        desired.env = vec!["FOO=bar".to_string()];
+        assert!(service_needs_restart(&current, &desired));
+    }
+
+    #[test]
+    fn test_service_no_restart_description_only() {
+        let current = make_parsed_unit("web", parse_unit::UnitType::Service);
+        let desired = ServiceEntry {
+            description: Some("new description".to_string()),
+            ..make_service_entry()
+        };
+        assert!(!service_needs_restart(&current, &desired));
     }
 }

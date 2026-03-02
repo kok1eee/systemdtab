@@ -44,11 +44,43 @@ pub fn run() -> Result<()> {
         println!("Exists: {}", env_path);
     }
 
-    // 4. Reload systemd user daemon
+    // 4. Install Claude Code skill file
+    install_claude_skill()?;
+
+    // 5. Reload systemd user daemon
     println!("Reloading systemd user daemon...");
     systemctl::daemon_reload()?;
 
     println!("sdtab initialized successfully.");
+    Ok(())
+}
+
+const SKILL_CONTENT: &str = include_str!("../skill/sdtab.md");
+
+const MANAGED_MARKER: &str = "managed by sdtab";
+
+fn install_claude_skill() -> Result<()> {
+    let home = std::env::var("HOME").context("Could not determine HOME directory")?;
+    let skill_dir = format!("{}/.claude/commands", home);
+    let skill_path = format!("{}/sdtab.md", skill_dir);
+
+    // If file exists and lacks the managed marker, user has customized it — skip
+    if Path::new(&skill_path).exists() {
+        if let Ok(existing) = fs::read_to_string(&skill_path) {
+            if !existing.contains(MANAGED_MARKER) {
+                println!("Skipped: {} (customized by user)", skill_path);
+                return Ok(());
+            }
+        }
+    }
+
+    fs::create_dir_all(&skill_dir)
+        .with_context(|| format!("Failed to create {}", skill_dir))?;
+
+    fs::write(&skill_path, SKILL_CONTENT)
+        .with_context(|| format!("Failed to write {}", skill_path))?;
+
+    println!("Installed: {} (Claude Code skill)", skill_path);
     Ok(())
 }
 

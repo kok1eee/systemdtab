@@ -110,7 +110,7 @@ sdtab apply Sdtabfile.toml
 | `@daily` | 1日1回（深夜0時） |
 | `@hourly` | 1時間ごと |
 | `@reboot` | システム起動時 |
-| `@daily/3` | 3日ごと |
+| `@daily/3` | 毎日 3:00 |
 | `@weekly/Mon,Wed` | 毎週月曜と水曜 |
 | `@service` | 常駐サービス（タイマーではない） |
 
@@ -187,9 +187,19 @@ cargo test
 
 ## AI エージェント対応
 
-sdtab は AI コーディングエージェント（Claude Code, Cursor など）向けのファイルを同梱しています:
+`sdtab init` は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) のスキルファイルを `~/.claude/commands/sdtab.md` にインストールします。以降、どのプロジェクトからでも自然言語で systemd タイマーを管理できます:
 
-- **`CLAUDE.md`** — コマンドリファレンス付きのプロジェクト指示書
+```
+You> /sdtab 毎朝9時にreport.pyを実行して
+```
+
+Claude Code が意図を解釈し、`sdtab add "0 9 * * *" "uv run ./report.py" --dry-run` で確認を求めた後、タイマーを作成します。
+
+スキルは**グローバルに動作**します。sdtab リポジトリの中だけでなく、インストール後はどのプロジェクトの Claude Code セッションからでも `/sdtab` でタイマーやサービスの作成・管理が可能です。
+
+その他:
+
+- **`CLAUDE.md`** — AI エージェントが自動で読み込むプロジェクト指示書
 - **`--dry-run`** — 実行前にユニットファイルをプレビュー
 - **`--json`** — プログラムから扱いやすい機械可読出力
 

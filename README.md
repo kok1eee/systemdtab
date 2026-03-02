@@ -110,7 +110,7 @@ Standard cron expressions and convenient shortcuts:
 | `@daily` | Once a day (midnight) |
 | `@hourly` | Once an hour |
 | `@reboot` | On system boot |
-| `@daily/3` | Every 3 days |
+| `@daily/3` | Daily at 3:00 |
 | `@weekly/Mon,Wed` | Every Monday and Wednesday |
 | `@service` | Long-running service (not a timer) |
 
@@ -187,9 +187,19 @@ cargo test
 
 ## AI Agent Support
 
-sdtab includes files for AI coding agents (Claude Code, Cursor, etc.):
+`sdtab init` installs a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill file to `~/.claude/commands/sdtab.md`. After that, you can manage systemd timers from any project with natural language:
 
-- **`CLAUDE.md`** — project instructions with full command reference
+```
+You> /sdtab run report.py every day at 9am
+```
+
+Claude Code interprets the intent, runs `sdtab add "0 9 * * *" "uv run ./report.py" --dry-run` for confirmation, then creates the timer.
+
+The skill works globally — not just inside the sdtab repository. Once installed, any Claude Code session can create, list, and manage timers and services through `/sdtab`.
+
+Also included:
+
+- **`CLAUDE.md`** — project instructions with full command reference (auto-loaded by AI agents)
 - **`--dry-run`** — preview generated unit files before committing
 - **`--json`** — machine-readable output for programmatic use
 
