@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 use crate::{config, systemctl};
 
@@ -67,6 +67,17 @@ fn setup_notify(webhook: Option<&str>, mention: Option<&str>) -> Result<()> {
         cfg.notify.slack_webhook = Some(webhook.to_string());
     }
     if let Some(mention) = mention {
+        // Accept: user ID (U0700J8MN3W), !here, !channel, !subteam^ID
+        let valid = mention == "!here"
+            || mention == "!channel"
+            || mention.starts_with("!subteam^")
+            || mention.chars().all(|c| c.is_ascii_alphanumeric());
+        if !valid {
+            bail!(
+                "Invalid slack-mention '{}': expected user ID (U0700J8MN3W), !here, or !channel",
+                mention
+            );
+        }
         cfg.notify.slack_mention = Some(mention.to_string());
     }
     config::save(&cfg)?;
@@ -84,6 +95,7 @@ fn setup_notify(webhook: Option<&str>, mention: Option<&str>) -> Result<()> {
 
     // Build notification message
     let mention_prefix = match &cfg.notify.slack_mention {
+        Some(id) if id.starts_with('!') => format!("<!{}> ", id.trim_start_matches('!')),
         Some(id) => format!("<@{}> ", id),
         None => String::new(),
     };

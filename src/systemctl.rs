@@ -38,18 +38,6 @@ pub fn stop_and_disable(unit: &str) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn is_active(unit: &str) -> Result<bool> {
-    let output = Command::new("systemctl")
-        .arg("--user")
-        .args(["is-active", unit])
-        .output()
-        .context("Failed to execute systemctl")?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.trim() == "active")
-}
-
 pub fn restart(unit: &str) -> Result<()> {
     run(&["restart", unit])?;
     Ok(())

@@ -3,7 +3,7 @@ use std::io::IsTerminal;
 use anyhow::Result;
 use serde::Serialize;
 
-use crate::{parse_unit, systemctl, unit};
+use crate::{parse_unit, systemctl, unit, SortOrder};
 
 #[derive(Serialize)]
 struct Entry {
@@ -19,7 +19,7 @@ struct Entry {
     sort_key: u64, // epoch usec for time sort (0 = service/unknown)
 }
 
-pub fn run(json: bool, sort: &str) -> Result<()> {
+pub fn run(json: bool, sort: SortOrder) -> Result<()> {
     let units = parse_unit::scan_all_units()?;
 
     if units.is_empty() {
@@ -48,7 +48,7 @@ pub fn run(json: bool, sort: &str) -> Result<()> {
                         .unwrap_or_else(|_| "?".to_string());
                 let next_run = format_next_run(&next_run_raw);
                 let schedule = unit.cron_expr.as_deref().unwrap_or("?").to_string();
-                let epoch = parse_epoch_usec(&next_run_raw);
+                let epoch = parse_datetime_sort_key(&next_run_raw);
                 ("timer", schedule, next_run, epoch)
             }
         };
@@ -73,7 +73,7 @@ pub fn run(json: bool, sort: &str) -> Result<()> {
 
     // Sort
     match sort {
-        "time" => {
+        SortOrder::Time => {
             // Services (sort_key=0) first, then timers by next run time
             entries.sort_by(|a, b| {
                 let type_ord = a.sort_key.cmp(&b.sort_key);
@@ -84,8 +84,7 @@ pub fn run(json: bool, sort: &str) -> Result<()> {
                 }
             });
         }
-        _ => {
-            // Default: name alphabetical
+        SortOrder::Name => {
             entries.sort_by(|a, b| a.name.cmp(&b.name));
         }
     }
@@ -101,10 +100,13 @@ pub fn run(json: bool, sort: &str) -> Result<()> {
 
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max - 1])
+        return s.to_string();
     }
+    let mut end = max - 1;
+    while !s.is_char_boundary(end) && end > 0 {
+        end -= 1;
+    }
+    format!("{}…", &s[..end])
 }
 
 fn format_status(status: &str, use_color: bool) -> String {
@@ -191,9 +193,9 @@ fn format_next_run(raw: &str) -> String {
     raw.to_string()
 }
 
-/// Parse systemd's NextElapseUSecRealtime into a sortable u64.
+/// Parse systemd's NextElapseUSecRealtime datetime string into a sortable u64.
 /// Input format: "Wed 2026-03-04 02:00:00 JST" -> 20260304020000
-fn parse_epoch_usec(raw: &str) -> u64 {
+fn parse_datetime_sort_key(raw: &str) -> u64 {
     // Try to extract "YYYY-MM-DD HH:MM:SS" from the string
     let parts: Vec<&str> = raw.split_whitespace().collect();
     if parts.len() >= 3 {

@@ -16,28 +16,19 @@ pub fn run(name: &str) -> Result<()> {
     }
 
     let is_timer = timer_path.exists();
-
-    if is_timer {
-        let timer_unit = unit::timer_filename(name);
-        if let Err(e) = systemctl::enable_and_start(&timer_unit) {
-            eprintln!("Error: Failed to enable timer '{}': {}", name, e);
-            eprintln!();
-            eprintln!("  sdtab logs {}      # View logs", name);
-            eprintln!("  sdtab status {}    # Check detailed status", name);
-            bail!("");
-        }
-        println!("Enabled timer '{}'.", name);
+    let (unit_file, kind) = if is_timer {
+        (unit::timer_filename(name), "timer")
     } else {
-        let service_unit = unit::service_filename(name);
-        if let Err(e) = systemctl::enable_and_start(&service_unit) {
-            eprintln!("Error: Failed to enable service '{}': {}", name, e);
-            eprintln!();
-            eprintln!("  sdtab logs {}      # View logs", name);
-            eprintln!("  sdtab status {}    # Check detailed status", name);
-            bail!("");
-        }
-        println!("Enabled service '{}'.", name);
+        (unit::service_filename(name), "service")
+    };
+
+    if let Err(e) = systemctl::enable_and_start(&unit_file) {
+        eprintln!();
+        eprintln!("  sdtab logs {}      # View logs", name);
+        eprintln!("  sdtab status {}    # Check detailed status", name);
+        bail!("Failed to enable {} '{}': {}", kind, name, e);
     }
+    println!("Enabled {} '{}'.", kind, name);
 
     Ok(())
 }

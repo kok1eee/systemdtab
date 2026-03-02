@@ -154,14 +154,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     systemctl::daemon_reload()?;
     let timer_unit = unit::timer_filename(&name);
     if let Err(e) = systemctl::enable_and_start(&timer_unit) {
-        eprintln!("Error: Timer '{}' failed to start: {}", name, e);
-        eprintln!();
-        eprintln!("  Unit files were created. To fix and retry:");
-        eprintln!("    sdtab edit {}      # Fix the unit file", name);
-        eprintln!("    sdtab enable {}    # Retry start", name);
-        eprintln!("    sdtab logs {}      # View logs", name);
-        eprintln!("    sdtab remove {}    # Remove and start over", name);
-        bail!("");
+        return bail_start_failure("Timer", &name, &e);
     }
 
     println!("Timer '{}' is now active.", name);
@@ -265,14 +258,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
     systemctl::daemon_reload()?;
     let service_unit = unit::service_filename(&name);
     if let Err(e) = systemctl::enable_and_start(&service_unit) {
-        eprintln!("Error: Service '{}' failed to start: {}", name, e);
-        eprintln!();
-        eprintln!("  Unit file was created. To fix and retry:");
-        eprintln!("    sdtab edit {}      # Fix the unit file", name);
-        eprintln!("    sdtab enable {}    # Retry start", name);
-        eprintln!("    sdtab logs {}      # View logs", name);
-        eprintln!("    sdtab remove {}    # Remove and start over", name);
-        bail!("");
+        return bail_start_failure("Service", &name, &e);
     }
 
     let restart_display = opts.restart.as_deref().unwrap_or("always");
@@ -284,6 +270,16 @@ fn run_service(opts: AddOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn bail_start_failure(kind: &str, name: &str, e: &anyhow::Error) -> Result<()> {
+    eprintln!();
+    eprintln!("  Unit file(s) created. To fix and retry:");
+    eprintln!("    sdtab edit {}      # Fix the unit file", name);
+    eprintln!("    sdtab enable {}    # Retry start", name);
+    eprintln!("    sdtab logs {}      # View logs", name);
+    eprintln!("    sdtab remove {}    # Remove and start over", name);
+    bail!("{} '{}' failed to start: {}", kind, name, e);
 }
 
 fn resolve_on_failure(no_notify: bool) -> Result<Option<String>> {

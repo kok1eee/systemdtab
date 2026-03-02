@@ -11,7 +11,7 @@ const DOW_FULL_NAMES: &[&str] = &[
     "saturday",
 ];
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CronSchedule {
     pub on_calendar: Option<String>,
     pub on_boot_sec: Option<String>,

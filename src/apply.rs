@@ -651,4 +651,170 @@ workdir = "/home/user/app"
         };
         assert!(!service_needs_restart(&current, &desired));
     }
+
+    // --- Exhaustive field coverage tests ---
+    // These ensure timer_matches/service_matches compare ALL fields.
+    // If a new field is added to ParsedUnit/TimerEntry/ServiceEntry but not
+    // to the comparison function, one of these tests will fail.
+
+    fn make_full_parsed_timer() -> parse_unit::ParsedUnit {
+        parse_unit::ParsedUnit {
+            name: "full".to_string(),
+            unit_type: parse_unit::UnitType::Timer,
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "my desc".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            restart_policy: None,
+            env_file: Some("/env".to_string()),
+            memory_max: Some("512M".to_string()),
+            cpu_quota: Some("50%".to_string()),
+            io_weight: Some("10".to_string()),
+            timeout_stop: Some("30s".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            exec_stop_post: Some("/bin/false".to_string()),
+            log_level_max: Some("warning".to_string()),
+            random_delay: Some("5m".to_string()),
+            env: vec!["FOO=bar".to_string()],
+            no_notify: true,
+        }
+    }
+
+    fn make_full_timer_entry() -> TimerEntry {
+        TimerEntry {
+            schedule: "0 9 * * *".to_string(),
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: Some("my desc".to_string()),
+            env_file: Some("/env".to_string()),
+            memory_max: Some("512M".to_string()),
+            cpu_quota: Some("50%".to_string()),
+            io_weight: Some("10".to_string()),
+            timeout_stop: Some("30s".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            exec_stop_post: Some("/bin/false".to_string()),
+            log_level_max: Some("warning".to_string()),
+            random_delay: Some("5m".to_string()),
+            env: vec!["FOO=bar".to_string()],
+            no_notify: true,
+        }
+    }
+
+    #[test]
+    fn test_timer_matches_all_fields_set() {
+        let current = make_full_parsed_timer();
+        let desired = make_full_timer_entry();
+        assert!(timer_matches(&current, &desired), "full match should return true");
+    }
+
+    #[test]
+    fn test_timer_matches_detects_each_field_change() {
+        let current = make_full_parsed_timer();
+        let base = make_full_timer_entry();
+
+        // Each field mutation must cause timer_matches to return false
+        let mutations: Vec<(&str, TimerEntry)> = vec![
+            ("schedule", TimerEntry { schedule: "0 10 * * *".into(), ..base.clone() }),
+            ("command", TimerEntry { command: "./other.sh".into(), ..base.clone() }),
+            ("workdir", TimerEntry { workdir: "/other".into(), ..base.clone() }),
+            ("description", TimerEntry { description: Some("changed".into()), ..base.clone() }),
+            ("env_file", TimerEntry { env_file: Some("/other.env".into()), ..base.clone() }),
+            ("memory_max", TimerEntry { memory_max: Some("1G".into()), ..base.clone() }),
+            ("cpu_quota", TimerEntry { cpu_quota: Some("100%".into()), ..base.clone() }),
+            ("io_weight", TimerEntry { io_weight: Some("50".into()), ..base.clone() }),
+            ("timeout_stop", TimerEntry { timeout_stop: Some("60s".into()), ..base.clone() }),
+            ("exec_start_pre", TimerEntry { exec_start_pre: Some("/bin/echo".into()), ..base.clone() }),
+            ("exec_stop_post", TimerEntry { exec_stop_post: Some("/bin/echo".into()), ..base.clone() }),
+            ("log_level_max", TimerEntry { log_level_max: Some("err".into()), ..base.clone() }),
+            ("random_delay", TimerEntry { random_delay: Some("10m".into()), ..base.clone() }),
+            ("env", TimerEntry { env: vec!["BAR=baz".into()], ..base.clone() }),
+            ("no_notify", TimerEntry { no_notify: false, ..base.clone() }),
+        ];
+
+        for (field, mutated) in &mutations {
+            assert!(
+                !timer_matches(&current, mutated),
+                "timer_matches should detect change in '{}'", field
+            );
+        }
+    }
+
+    fn make_full_parsed_service() -> parse_unit::ParsedUnit {
+        parse_unit::ParsedUnit {
+            name: "full".to_string(),
+            unit_type: parse_unit::UnitType::Service,
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "my desc".to_string(),
+            cron_expr: None,
+            restart_policy: Some("on-failure".to_string()),
+            env_file: Some("/env".to_string()),
+            memory_max: Some("512M".to_string()),
+            cpu_quota: Some("50%".to_string()),
+            io_weight: Some("10".to_string()),
+            timeout_stop: Some("30s".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            exec_stop_post: Some("/bin/false".to_string()),
+            log_level_max: Some("warning".to_string()),
+            random_delay: None,
+            env: vec!["FOO=bar".to_string()],
+            no_notify: true,
+        }
+    }
+
+    fn make_full_service_entry() -> ServiceEntry {
+        ServiceEntry {
+            command: "./run.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: Some("my desc".to_string()),
+            restart: Some("on-failure".to_string()),
+            env_file: Some("/env".to_string()),
+            memory_max: Some("512M".to_string()),
+            cpu_quota: Some("50%".to_string()),
+            io_weight: Some("10".to_string()),
+            timeout_stop: Some("30s".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            exec_stop_post: Some("/bin/false".to_string()),
+            log_level_max: Some("warning".to_string()),
+            env: vec!["FOO=bar".to_string()],
+            no_notify: true,
+        }
+    }
+
+    #[test]
+    fn test_service_matches_all_fields_set() {
+        let current = make_full_parsed_service();
+        let desired = make_full_service_entry();
+        assert!(service_matches(&current, &desired), "full match should return true");
+    }
+
+    #[test]
+    fn test_service_matches_detects_each_field_change() {
+        let current = make_full_parsed_service();
+        let base = make_full_service_entry();
+
+        let mutations: Vec<(&str, ServiceEntry)> = vec![
+            ("command", ServiceEntry { command: "./other.sh".into(), ..base.clone() }),
+            ("workdir", ServiceEntry { workdir: "/other".into(), ..base.clone() }),
+            ("description", ServiceEntry { description: Some("changed".into()), ..base.clone() }),
+            ("restart", ServiceEntry { restart: Some("always".into()), ..base.clone() }),
+            ("env_file", ServiceEntry { env_file: Some("/other.env".into()), ..base.clone() }),
+            ("memory_max", ServiceEntry { memory_max: Some("1G".into()), ..base.clone() }),
+            ("cpu_quota", ServiceEntry { cpu_quota: Some("100%".into()), ..base.clone() }),
+            ("io_weight", ServiceEntry { io_weight: Some("50".into()), ..base.clone() }),
+            ("timeout_stop", ServiceEntry { timeout_stop: Some("60s".into()), ..base.clone() }),
+            ("exec_start_pre", ServiceEntry { exec_start_pre: Some("/bin/echo".into()), ..base.clone() }),
+            ("exec_stop_post", ServiceEntry { exec_stop_post: Some("/bin/echo".into()), ..base.clone() }),
+            ("log_level_max", ServiceEntry { log_level_max: Some("err".into()), ..base.clone() }),
+            ("env", ServiceEntry { env: vec!["BAR=baz".into()], ..base.clone() }),
+            ("no_notify", ServiceEntry { no_notify: false, ..base.clone() }),
+        ];
+
+        for (field, mutated) in &mutations {
+            assert!(
+                !service_matches(&current, mutated),
+                "service_matches should detect change in '{}'", field
+            );
+        }
+    }
 }

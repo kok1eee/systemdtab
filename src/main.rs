@@ -18,13 +18,19 @@ mod systemctl;
 mod unit;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
 #[command(name = "sdtab", about = "systemd timer management made simple")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum SortOrder {
+    Time,
+    Name,
 }
 
 #[derive(Subcommand)]
@@ -50,8 +56,8 @@ enum Commands {
         #[arg(long)]
         json: bool,
         /// Sort order: time (default, next run) or name
-        #[arg(long, default_value = "time")]
-        sort: String,
+        #[arg(long, value_enum, default_value_t = SortOrder::Time)]
+        sort: SortOrder,
     },
     /// Remove a timer or service
     Remove {
@@ -118,10 +124,7 @@ enum Commands {
 
 fn main() {
     if let Err(e) = run() {
-        let msg = e.to_string();
-        if !msg.is_empty() {
-            eprintln!("Error: {}", msg);
-        }
+        eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 }
@@ -132,7 +135,7 @@ fn run() -> Result<()> {
     match cli.command {
         Commands::Init { slack_webhook, slack_mention } => init::run(slack_webhook.as_deref(), slack_mention.as_deref())?,
         Commands::Add(opts) => add::run(opts)?,
-        Commands::List { json, sort } => list::run(json, &sort)?,
+        Commands::List { json, sort } => list::run(json, sort)?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
         Commands::Logs { name, follow, lines, priority } => logs::run(&name, follow, lines, priority)?,

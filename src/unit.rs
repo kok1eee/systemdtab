@@ -1,6 +1,7 @@
 use crate::cron::CronSchedule;
 use crate::init;
 
+#[derive(Default)]
 pub struct UnitConfig {
     pub name: String,
     pub command: String,
@@ -292,28 +293,12 @@ mod tests {
             command: "uv run ./report.py".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "daily report".to_string(),
-
             cron_expr: Some("0 9 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
-                on_boot_sec: None,
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_service(&config);
@@ -332,28 +317,12 @@ mod tests {
             command: "uv run ./report.py".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "daily report".to_string(),
-
             cron_expr: Some("0 9 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
-                on_boot_sec: None,
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let timer = generate_timer(&config);
@@ -369,28 +338,12 @@ mod tests {
             command: "./boot.sh".to_string(),
             workdir: "/home/user".to_string(),
             description: "run on boot".to_string(),
-
             cron_expr: Some("@reboot".to_string()),
             schedule: Some(CronSchedule {
-                on_calendar: None,
                 on_boot_sec: Some("1min".to_string()),
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let timer = generate_timer(&config);
@@ -404,23 +357,9 @@ mod tests {
             command: "ambient-task-agent serve --port 3000".to_string(),
             workdir: "/home/user/project".to_string(),
             description: "ambient-task-agent serve --port 3000".to_string(),
-
-            cron_expr: None,
-            schedule: None,
             restart_policy: Some("on-failure".to_string()),
             env_file: Some("/home/user/.config/bot/.env".to_string()),
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_daemon_service(&config);
@@ -441,23 +380,7 @@ mod tests {
             command: "python bot.py".to_string(),
             workdir: "/home/user".to_string(),
             description: "python bot.py".to_string(),
-
-            cron_expr: None,
-            schedule: None,
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_daemon_service(&config);
@@ -475,28 +398,18 @@ mod tests {
             command: "./heavy-task.sh".to_string(),
             workdir: "/home/user".to_string(),
             description: "heavy task".to_string(),
-
             cron_expr: Some("0 10 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 10:00:00".to_string()),
-                on_boot_sec: None,
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
             memory_max: Some("512M".to_string()),
             cpu_quota: Some("50%".to_string()),
             io_weight: Some("10".to_string()),
             timeout_stop: Some("30s".to_string()),
-            exec_start_pre: None,
-            exec_stop_post: None,
             log_level_max: Some("warning".to_string()),
             random_delay: Some("5m".to_string()),
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_service(&config);
@@ -517,23 +430,11 @@ mod tests {
             command: "python bot.py".to_string(),
             workdir: "/home/user".to_string(),
             description: "python bot.py".to_string(),
-
-            cron_expr: None,
-            schedule: None,
             restart_policy: Some("always".to_string()),
-            env_file: None,
             memory_max: Some("1G".to_string()),
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
             exec_start_pre: Some("/usr/bin/test -f /tmp/ready".to_string()),
             exec_stop_post: Some("/usr/bin/curl -s http://notify/down".to_string()),
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_daemon_service(&config);
@@ -550,28 +451,12 @@ mod tests {
             command: "echo hello".to_string(),
             workdir: "/home/user".to_string(),
             description: "light task".to_string(),
-
             cron_expr: Some("@daily".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 00:00:00".to_string()),
-                on_boot_sec: None,
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_service(&config);
@@ -589,24 +474,10 @@ mod tests {
             cron_expr: Some("0 9 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
-                on_boot_sec: None,
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
             on_failure: Some("sdtab-notify@%n.service".to_string()),
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_service(&config);
@@ -624,24 +495,10 @@ mod tests {
             cron_expr: Some("0 9 * * *".to_string()),
             schedule: Some(CronSchedule {
                 on_calendar: Some("*-*-* 09:00:00".to_string()),
-                on_boot_sec: None,
-                is_service: false,
-                display: None,
+                ..Default::default()
             }),
-            restart_policy: None,
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
-            on_failure: None,
             no_notify: true,
+            ..Default::default()
         };
 
         let service = generate_service(&config);
@@ -656,22 +513,9 @@ mod tests {
             command: "python bot.py".to_string(),
             workdir: "/home/user".to_string(),
             description: "python bot.py".to_string(),
-            cron_expr: None,
-            schedule: None,
             restart_policy: Some("always".to_string()),
-            env_file: None,
-            memory_max: None,
-            cpu_quota: None,
-            io_weight: None,
-            timeout_stop: None,
-            exec_start_pre: None,
-            exec_stop_post: None,
-            log_level_max: None,
-            random_delay: None,
-            env: vec![],
-            original_command: None,
             on_failure: Some("sdtab-notify@%n.service".to_string()),
-            no_notify: false,
+            ..Default::default()
         };
 
         let service = generate_daemon_service(&config);
