@@ -154,11 +154,14 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     systemctl::daemon_reload()?;
     let timer_unit = unit::timer_filename(&name);
     if let Err(e) = systemctl::enable_and_start(&timer_unit) {
+        eprintln!("Error: Timer '{}' failed to start: {}", name, e);
         eprintln!();
-        eprintln!("  Troubleshoot with:");
-        eprintln!("    sdtab status {}    # Check detailed status", name);
+        eprintln!("  Unit files were created. To fix and retry:");
+        eprintln!("    sdtab edit {}      # Fix the unit file", name);
+        eprintln!("    sdtab enable {}    # Retry start", name);
         eprintln!("    sdtab logs {}      # View logs", name);
-        bail!("Timer '{}' was created but failed to start: {}", name, e);
+        eprintln!("    sdtab remove {}    # Remove and start over", name);
+        std::process::exit(1);
     }
 
     println!("Timer '{}' is now active.", name);
@@ -262,11 +265,14 @@ fn run_service(opts: AddOptions) -> Result<()> {
     systemctl::daemon_reload()?;
     let service_unit = unit::service_filename(&name);
     if let Err(e) = systemctl::enable_and_start(&service_unit) {
+        eprintln!("Error: Service '{}' failed to start: {}", name, e);
         eprintln!();
-        eprintln!("  Troubleshoot with:");
-        eprintln!("    sdtab status {}    # Check detailed status", name);
+        eprintln!("  Unit file was created. To fix and retry:");
+        eprintln!("    sdtab edit {}      # Fix the unit file", name);
+        eprintln!("    sdtab enable {}    # Retry start", name);
         eprintln!("    sdtab logs {}      # View logs", name);
-        bail!("Service '{}' was created but failed to start: {}", name, e);
+        eprintln!("    sdtab remove {}    # Remove and start over", name);
+        std::process::exit(1);
     }
 
     let restart_display = opts.restart.as_deref().unwrap_or("always");
