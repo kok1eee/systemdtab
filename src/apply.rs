@@ -825,4 +825,114 @@ workdir = "/home/user/app"
             );
         }
     }
+
+    // --- Roundtrip tests ---
+    // generate → parse → compare: catches parse_service_file reading omissions.
+    // If generate_service emits a directive but parse_service_file doesn't read it,
+    // the parsed value will be None and the roundtrip assertion will fail.
+
+    fn make_full_timer_config() -> unit::UnitConfig {
+        unit::UnitConfig {
+            name: "roundtrip".to_string(),
+            command: "/usr/bin/echo hello".to_string(),
+            workdir: "/home/user/project".to_string(),
+            description: "roundtrip test".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            schedule: Some(cron::parse("0 9 * * *").unwrap()),
+            restart_policy: None,
+            env_file: Some("/home/user/.env".to_string()),
+            memory_max: Some("512M".to_string()),
+            cpu_quota: Some("50%".to_string()),
+            io_weight: Some("10".to_string()),
+            timeout_stop: Some("30s".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            exec_stop_post: Some("/bin/false".to_string()),
+            log_level_max: Some("warning".to_string()),
+            random_delay: Some("5m".to_string()),
+            env: vec!["FOO=bar".to_string(), "BAZ=qux".to_string()],
+            original_command: Some("echo hello".to_string()),
+            on_failure: Some("sdtab-notify@%n.service".to_string()),
+            no_notify: false,
+        }
+    }
+
+    fn make_full_service_config() -> unit::UnitConfig {
+        unit::UnitConfig {
+            name: "roundtrip".to_string(),
+            command: "/usr/bin/node index.js".to_string(),
+            workdir: "/home/user/app".to_string(),
+            description: "roundtrip svc".to_string(),
+            cron_expr: None,
+            schedule: None,
+            restart_policy: Some("on-failure".to_string()),
+            env_file: Some("/home/user/.env".to_string()),
+            memory_max: Some("1G".to_string()),
+            cpu_quota: Some("100%".to_string()),
+            io_weight: Some("50".to_string()),
+            timeout_stop: Some("60s".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            exec_stop_post: Some("/bin/false".to_string()),
+            log_level_max: Some("err".to_string()),
+            random_delay: None,
+            env: vec!["NODE_ENV=production".to_string()],
+            original_command: Some("node index.js".to_string()),
+            on_failure: Some("sdtab-notify@%n.service".to_string()),
+            no_notify: false,
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_timer_generate_parse() {
+        let config = make_full_timer_config();
+        let service_str = unit::generate_service(&config);
+        let timer_str = unit::generate_timer(&config);
+        let global_env = init::global_env_path().unwrap_or_default();
+
+        let parsed = parse_unit::parse_service_file(
+            "roundtrip", &service_str, Some(&timer_str), &global_env,
+        );
+
+        // original_command is set, so parsed.command should be the original
+        assert_eq!(parsed.command, "echo hello", "command (via sdtab:command)");
+        assert_eq!(parsed.workdir, config.workdir, "workdir");
+        assert_eq!(parsed.description, config.description, "description");
+        assert_eq!(parsed.cron_expr, config.cron_expr, "cron_expr");
+        assert_eq!(parsed.env_file, config.env_file, "env_file");
+        assert_eq!(parsed.memory_max, config.memory_max, "memory_max");
+        assert_eq!(parsed.cpu_quota, config.cpu_quota, "cpu_quota");
+        assert_eq!(parsed.io_weight, config.io_weight, "io_weight");
+        assert_eq!(parsed.timeout_stop, config.timeout_stop, "timeout_stop");
+        assert_eq!(parsed.exec_start_pre, config.exec_start_pre, "exec_start_pre");
+        assert_eq!(parsed.exec_stop_post, config.exec_stop_post, "exec_stop_post");
+        assert_eq!(parsed.log_level_max, config.log_level_max, "log_level_max");
+        assert_eq!(parsed.random_delay, config.random_delay, "random_delay");
+        assert_eq!(parsed.env, config.env, "env");
+        assert_eq!(parsed.no_notify, config.no_notify, "no_notify");
+    }
+
+    #[test]
+    fn test_roundtrip_service_generate_parse() {
+        let config = make_full_service_config();
+        let service_str = unit::generate_daemon_service(&config);
+        let global_env = init::global_env_path().unwrap_or_default();
+
+        let parsed = parse_unit::parse_service_file(
+            "roundtrip", &service_str, None, &global_env,
+        );
+
+        assert_eq!(parsed.command, "node index.js", "command (via sdtab:command)");
+        assert_eq!(parsed.workdir, config.workdir, "workdir");
+        assert_eq!(parsed.description, config.description, "description");
+        assert_eq!(parsed.restart_policy, config.restart_policy, "restart_policy");
+        assert_eq!(parsed.env_file, config.env_file, "env_file");
+        assert_eq!(parsed.memory_max, config.memory_max, "memory_max");
+        assert_eq!(parsed.cpu_quota, config.cpu_quota, "cpu_quota");
+        assert_eq!(parsed.io_weight, config.io_weight, "io_weight");
+        assert_eq!(parsed.timeout_stop, config.timeout_stop, "timeout_stop");
+        assert_eq!(parsed.exec_start_pre, config.exec_start_pre, "exec_start_pre");
+        assert_eq!(parsed.exec_stop_post, config.exec_stop_post, "exec_stop_post");
+        assert_eq!(parsed.log_level_max, config.log_level_max, "log_level_max");
+        assert_eq!(parsed.env, config.env, "env");
+        assert_eq!(parsed.no_notify, config.no_notify, "no_notify");
+    }
 }
