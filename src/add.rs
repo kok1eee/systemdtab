@@ -21,7 +21,7 @@ pub struct AddOptions {
     /// Description
     #[arg(long)]
     pub description: Option<String>,
-    /// Environment file path (@service only)
+    /// Environment file path
     #[arg(long)]
     pub env_file: Option<String>,
     /// Restart policy: always, on-failure, no (@service only, default: always)
@@ -54,6 +54,9 @@ pub struct AddOptions {
     /// Environment variables (e.g., --env "PATH=/usr/bin" --env "FOO=bar"). Repeatable
     #[arg(long)]
     pub env: Vec<String>,
+    /// Preview generated unit files without creating them
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub fn run(opts: AddOptions) -> Result<()> {
@@ -66,6 +69,13 @@ pub fn run(opts: AddOptions) -> Result<()> {
 }
 
 fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
+    if let Some(ref path) = opts.env_file {
+        if !Path::new(path).exists() {
+            bail!("Environment file not found: {}", path);
+        }
+    }
+
+    let dry_run = opts.dry_run;
     let name = opts.name.unwrap_or_else(|| unit::derive_name(&opts.command));
 
     let unit_dir = init::unit_dir()?;
@@ -99,7 +109,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         cron_expr: Some(display_schedule.clone()),
         schedule: Some(parsed),
         restart_policy: None,
-        env_file: None,
+        env_file: opts.env_file,
         memory_max: opts.memory_max,
         cpu_quota: opts.cpu_quota,
         io_weight: opts.io_weight,
@@ -114,6 +124,15 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
 
     let service_content = unit::generate_service(&config);
     let timer_content = unit::generate_timer(&config);
+
+    if dry_run {
+        println!("--- {} ---", unit::service_filename(&name));
+        print!("{}", service_content);
+        println!();
+        println!("--- {} ---", unit::timer_filename(&name));
+        print!("{}", timer_content);
+        return Ok(());
+    }
 
     let service_path = Path::new(&unit_dir).join(unit::service_filename(&name));
     fs::write(&service_path, &service_content)
@@ -148,6 +167,8 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
 }
 
 fn run_service(opts: AddOptions) -> Result<()> {
+    let dry_run = opts.dry_run;
+
     if let Some(ref r) = opts.restart {
         match r.as_str() {
             "always" | "on-failure" | "no" => {}
@@ -207,6 +228,12 @@ fn run_service(opts: AddOptions) -> Result<()> {
     };
 
     let service_content = unit::generate_daemon_service(&config);
+
+    if dry_run {
+        println!("--- {} ---", unit::service_filename(&name));
+        print!("{}", service_content);
+        return Ok(());
+    }
 
     fs::write(&service_path, &service_content)
         .with_context(|| format!("Failed to write {}", service_path.display()))?;

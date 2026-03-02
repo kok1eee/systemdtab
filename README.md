@@ -79,8 +79,8 @@ sdtab apply Sdtabfile.toml
 | Command | Description |
 |---------|-------------|
 | `sdtab init` | Enable linger and create directories |
-| `sdtab add "<schedule>" "<command>"` | Add a timer |
-| `sdtab add "@service" "<command>"` | Add a long-running service |
+| `sdtab add "<schedule>" "<command>" [--dry-run]` | Add a timer |
+| `sdtab add "@service" "<command>" [--dry-run]` | Add a long-running service |
 | `sdtab list` | List all managed timers and services |
 | `sdtab status <name>` | Show detailed status with next 5 run times |
 | `sdtab edit <name>` | Edit unit file with $EDITOR |
@@ -115,7 +115,7 @@ Standard cron expressions and convenient shortcuts:
 | `--name <name>` | Unit name (auto-generated from command if omitted) |
 | `--workdir <path>` | Working directory (defaults to current) |
 | `--description <text>` | Description |
-| `--env-file <path>` | Environment file (services only) |
+| `--env-file <path>` | Environment file |
 | `--restart <policy>` | `always` / `on-failure` / `no` (services only, default: `always`) |
 | `--memory-max <size>` | Memory limit (e.g. `512M`, `1G`) |
 | `--cpu-quota <percent>` | CPU limit (e.g. `50%`, `200%`) |
@@ -123,6 +123,7 @@ Standard cron expressions and convenient shortcuts:
 | `--timeout-stop <duration>` | Stop timeout (e.g. `30s`) |
 | `--random-delay <duration>` | Random delay for timer firing (e.g. `5m`) |
 | `--env <KEY=VALUE>` | Environment variable (repeatable) |
+| `--dry-run` | Preview generated unit files without creating them |
 
 ## Export Format
 

@@ -30,6 +30,10 @@ pub fn generate_service(config: &UnitConfig) -> String {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
         None => String::new(),
     };
+    let env_line = match &config.env_file {
+        Some(path) => format!("EnvironmentFile={}\n", path),
+        None => String::new(),
+    };
     format!(
         "# sdtab:type=timer\n\
          # sdtab:cron={cron}\n\
@@ -42,6 +46,7 @@ pub fn generate_service(config: &UnitConfig) -> String {
          ExecStart={command}\n\
          WorkingDirectory={workdir}\n\
          {global_env}\
+         {env_line}\
          {resource_lines}",
         cron = cron,
         command_meta = command_meta,
@@ -50,6 +55,7 @@ pub fn generate_service(config: &UnitConfig) -> String {
         command = config.command,
         workdir = config.workdir,
         global_env = global_env,
+        env_line = env_line,
         resource_lines = resource_lines,
     )
 }

@@ -7,8 +7,8 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | コマンド | 機能 |
 |---------|------|
 | `sdtab init` | linger 有効化 + ディレクトリ作成 |
-| `sdtab add "<schedule>" "<command>"` | タイマー追加 |
-| `sdtab add "@service" "<command>"` | 常駐サービス追加 |
+| `sdtab add "<schedule>" "<command>" [--dry-run]` | タイマー追加 |
+| `sdtab add "@service" "<command>" [--dry-run]` | 常駐サービス追加 |
 | `sdtab list` | 管理中タイマー・サービス一覧 |
 | `sdtab status <name>` | 詳細ステータス表示 |
 | `sdtab edit <name>` | $EDITOR でユニットファイル編集 |
@@ -27,7 +27,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `--name <name>` | ユニット名（省略時はコマンドから自動生成） |
 | `--workdir <path>` | 作業ディレクトリ（省略時はカレントディレクトリ） |
 | `--description <text>` | 説明文 |
-| `--env-file <path>` | 環境変数ファイル（`@service`のみ） |
+| `--env-file <path>` | 環境変数ファイル |
 | `--restart <policy>` | リスタートポリシー: `always`/`on-failure`/`no`（`@service`のみ、デフォルト: `always`） |
 | `--memory-max <size>` | メモリ上限（例: `512M`, `1G`） |
 | `--cpu-quota <percent>` | CPU使用率上限（例: `50%`, `200%`） |
@@ -38,6 +38,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `--log-level-max <level>` | 保存ログレベル上限（例: `warning`, `err`） |
 | `--random-delay <duration>` | タイマー発火のランダム遅延（例: `5m`）。タイマーのみ |
 | `--env <KEY=VALUE>` | 環境変数（複数指定可: `--env "PATH=..." --env "FOO=bar"`） |
+| `--dry-run` | 生成されるユニットファイルをプレビュー（作成しない） |
 
 ## アーキテクチャ
 

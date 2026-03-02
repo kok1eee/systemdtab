@@ -188,7 +188,7 @@ fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitTy
                 name: Some(name.to_string()),
                 workdir: Some(entry.workdir.clone()),
                 description: entry.description.clone(),
-                env_file: None,
+                env_file: entry.env_file.clone(),
                 restart: None,
                 memory_max: entry.memory_max.clone(),
                 cpu_quota: entry.cpu_quota.clone(),
@@ -199,6 +199,7 @@ fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitTy
                 log_level_max: entry.log_level_max.clone(),
                 random_delay: entry.random_delay.clone(),
                 env: entry.env.clone(),
+                dry_run: false,
             })?;
         }
         parse_unit::UnitType::Service => {
@@ -220,6 +221,7 @@ fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitTy
                 log_level_max: entry.log_level_max.clone(),
                 random_delay: None,
                 env: entry.env.clone(),
+                dry_run: false,
             })?;
         }
     }
@@ -232,6 +234,7 @@ fn timer_matches(current: &parse_unit::ParsedUnit, desired: &TimerEntry) -> bool
         && current.command == desired.command
         && current.workdir == desired.workdir
         && sdtabfile::desc_matches(&current.description, &current.command, &desired.description)
+        && current.env_file == desired.env_file
         && current.memory_max == desired.memory_max
         && current.cpu_quota == desired.cpu_quota
         && current.io_weight == desired.io_weight

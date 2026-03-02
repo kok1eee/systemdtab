@@ -18,6 +18,8 @@ pub struct TimerEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_max: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_quota: Option<String>,
@@ -111,6 +113,7 @@ mod tests {
                 command: "uv run ./report.py".to_string(),
                 workdir: "/home/user/project".to_string(),
                 description: Some("daily report".to_string()),
+                env_file: None,
                 memory_max: Some("512M".to_string()),
                 cpu_quota: None,
                 io_weight: None,
