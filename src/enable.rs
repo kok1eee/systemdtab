@@ -24,7 +24,7 @@ pub fn run(name: &str) -> Result<()> {
             eprintln!();
             eprintln!("  sdtab logs {}      # View logs", name);
             eprintln!("  sdtab status {}    # Check detailed status", name);
-            std::process::exit(1);
+            bail!("");
         }
         println!("Enabled timer '{}'.", name);
     } else {
@@ -34,7 +34,7 @@ pub fn run(name: &str) -> Result<()> {
             eprintln!();
             eprintln!("  sdtab logs {}      # View logs", name);
             eprintln!("  sdtab status {}    # Check detailed status", name);
-            std::process::exit(1);
+            bail!("");
         }
         println!("Enabled service '{}'.", name);
     }

@@ -161,7 +161,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         eprintln!("    sdtab enable {}    # Retry start", name);
         eprintln!("    sdtab logs {}      # View logs", name);
         eprintln!("    sdtab remove {}    # Remove and start over", name);
-        std::process::exit(1);
+        bail!("");
     }
 
     println!("Timer '{}' is now active.", name);
@@ -272,7 +272,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
         eprintln!("    sdtab enable {}    # Retry start", name);
         eprintln!("    sdtab logs {}      # View logs", name);
         eprintln!("    sdtab remove {}    # Remove and start over", name);
-        std::process::exit(1);
+        bail!("");
     }
 
     let restart_display = opts.restart.as_deref().unwrap_or("always");

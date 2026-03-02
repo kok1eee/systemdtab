@@ -116,7 +116,17 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(e) = run() {
+        let msg = e.to_string();
+        if !msg.is_empty() {
+            eprintln!("Error: {}", msg);
+        }
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
