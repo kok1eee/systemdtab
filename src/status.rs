@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 
-use crate::{init, systemctl, unit};
+use crate::{cron, init, parse_unit, systemctl, unit};
 
 pub fn run(name: &str) -> Result<()> {
     let unit_dir = init::unit_dir()?;
@@ -16,18 +16,26 @@ pub fn run(name: &str) -> Result<()> {
         bail!("'{}' not found.", name);
     }
 
-    let content = fs::read_to_string(&service_path)?;
-    let is_timer = timer_path.exists();
-    let is_service = content.contains("# sdtab:type=service");
+    let service_content = fs::read_to_string(&service_path)?;
+    let global_env_path = init::global_env_path().unwrap_or_default();
+    let timer_content = fs::read_to_string(&timer_path).ok();
+    let parsed = parse_unit::parse_service_file(
+        name,
+        &service_content,
+        timer_content.as_deref(),
+        &global_env_path,
+    );
+
+    let is_timer = matches!(parsed.unit_type, parse_unit::UnitType::Timer);
 
     println!("Name:    {}", name);
 
-    if is_service {
+    if is_timer {
+        println!("Type:    timer");
+        print_timer_status(name, parsed.cron_expr.as_deref())?;
+    } else {
         println!("Type:    service");
         print_service_status(name)?;
-    } else if is_timer {
-        println!("Type:    timer");
-        print_timer_status(name)?;
     }
 
     // Show common service properties
@@ -72,7 +80,7 @@ fn print_service_status(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn print_timer_status(name: &str) -> Result<()> {
+fn print_timer_status(name: &str, cron_expr: Option<&str>) -> Result<()> {
     let timer_unit = unit::timer_filename(name);
     let service_unit = unit::service_filename(name);
 
@@ -94,6 +102,22 @@ fn print_timer_status(name: &str) -> Result<()> {
 
     if let Ok(result) = systemctl::show_property(&service_unit, "Result") {
         println!("Result:  {}", result);
+    }
+
+    // Show next 5 execution times
+    if let Some(expr) = cron_expr {
+        if let Ok(parsed) = cron::parse(expr) {
+            if let Some(ref cal) = parsed.on_calendar {
+                if let Ok(times) = systemctl::next_runs(cal, 5) {
+                    if !times.is_empty() {
+                        println!("\nNext {} runs:", times.len());
+                        for time in &times {
+                            println!("  {}", time);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(())

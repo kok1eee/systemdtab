@@ -132,6 +132,18 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     println!("  Schedule: {}", display_schedule);
     println!("  Command:  {}", resolved_command);
 
+    // Show next 5 execution times
+    if let Some(cal) = config.schedule.as_ref().and_then(|s| s.on_calendar.as_ref()) {
+        if let Ok(times) = systemctl::next_runs(cal, 5) {
+            if !times.is_empty() {
+                println!("\n  Next {} runs:", times.len());
+                for time in &times {
+                    println!("    {}", time);
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 

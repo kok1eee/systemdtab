@@ -87,6 +87,27 @@ pub fn scan_all_units() -> Result<Vec<ParsedUnit>> {
     Ok(units)
 }
 
+/// Shorten a fully-resolved command by extracting just the binary name.
+/// e.g. "/home/user/.cargo/bin/ambient-task-agent serve --port 3100"
+///    → "ambient-task-agent serve --port 3100"
+/// Commands starting with "./" or "../" or bare names are returned as-is.
+fn shorten_command(command: &str) -> String {
+    let parts: Vec<&str> = command.splitn(2, char::is_whitespace).collect();
+    let binary = parts[0];
+
+    // Only shorten absolute paths
+    if !binary.starts_with('/') {
+        return command.to_string();
+    }
+
+    let short = binary.rsplit('/').next().unwrap_or(binary);
+    if parts.len() > 1 {
+        format!("{} {}", short, parts[1])
+    } else {
+        short.to_string()
+    }
+}
+
 pub fn parse_service_file(
     name: &str,
     service_content: &str,
@@ -192,9 +213,16 @@ pub fn parse_service_file(
         }
     }
 
-    // Use original_command if available, otherwise fall back to ExecStart
+    // Use original_command if available, otherwise shorten ExecStart full path
     if let Some(orig) = original_command {
         command = orig;
+    } else {
+        let short = shorten_command(&command);
+        // If description was auto-generated from the full path command, update it too
+        if description == command {
+            description = short.clone();
+        }
+        command = short;
     }
 
     ParsedUnit {
@@ -299,8 +327,8 @@ EnvironmentFile=-/home/user/.config/sdtab/env
 ";
 
         let parsed = parse_service_file("task", service, None, "/home/user/.config/sdtab/env");
-        // No sdtab:command, so should fall back to ExecStart
-        assert_eq!(parsed.command, "/usr/bin/echo hello");
+        // No sdtab:command, so falls back to ExecStart (shortened)
+        assert_eq!(parsed.command, "echo hello");
     }
 
     #[test]
@@ -353,5 +381,52 @@ Environment=BAZ=qux
 
         let parsed = parse_service_file("app", service, None, "");
         assert_eq!(parsed.env, vec!["FOO=bar", "BAZ=qux"]);
+    }
+
+    #[test]
+    fn shorten_absolute_path_command() {
+        assert_eq!(
+            shorten_command("/home/user/.cargo/bin/ambient-task-agent serve --port 3100"),
+            "ambient-task-agent serve --port 3100"
+        );
+    }
+
+    #[test]
+    fn shorten_absolute_path_no_args() {
+        assert_eq!(
+            shorten_command("/usr/bin/echo"),
+            "echo"
+        );
+    }
+
+    #[test]
+    fn shorten_relative_unchanged() {
+        assert_eq!(shorten_command("./start.sh --flag"), "./start.sh --flag");
+    }
+
+    #[test]
+    fn shorten_bare_command_unchanged() {
+        assert_eq!(shorten_command("node index.js"), "node index.js");
+    }
+
+    #[test]
+    fn parse_fallback_shortens_full_path() {
+        let service = "\
+# sdtab:type=service
+# sdtab:restart=always
+[Unit]
+Description=[sdtab] agent: ambient-task-agent serve --port 3100
+
+[Service]
+Type=simple
+ExecStart=/home/user/.cargo/bin/ambient-task-agent serve --port 3100
+WorkingDirectory=/home/user/project
+Restart=always
+RestartSec=5
+";
+
+        // No sdtab:command= metadata, so should shorten ExecStart
+        let parsed = parse_service_file("agent", service, None, "");
+        assert_eq!(parsed.command, "ambient-task-agent serve --port 3100");
     }
 }
