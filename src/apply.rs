@@ -652,10 +652,54 @@ workdir = "/home/user/app"
         assert!(!service_needs_restart(&current, &desired));
     }
 
+    // --- Field parity tests ---
+    // These conversion functions use struct literals to map ParsedUnit → Entry.
+    // If a field is added to TimerEntry/ServiceEntry but NOT to ParsedUnit,
+    // this code won't compile. This catches the "forgot to add field to ParsedUnit"
+    // scenario that exhaustive mutation tests cannot detect.
+
+    fn timer_entry_from_parsed(p: &parse_unit::ParsedUnit) -> TimerEntry {
+        TimerEntry {
+            schedule: p.cron_expr.clone().unwrap_or_default(),
+            command: p.command.clone(),
+            workdir: p.workdir.clone(),
+            description: sdtabfile::description_if_different(&p.description, &p.command),
+            env_file: p.env_file.clone(),
+            memory_max: p.memory_max.clone(),
+            cpu_quota: p.cpu_quota.clone(),
+            io_weight: p.io_weight.clone(),
+            timeout_stop: p.timeout_stop.clone(),
+            exec_start_pre: p.exec_start_pre.clone(),
+            exec_stop_post: p.exec_stop_post.clone(),
+            log_level_max: p.log_level_max.clone(),
+            random_delay: p.random_delay.clone(),
+            env: p.env.clone(),
+            no_notify: p.no_notify,
+        }
+    }
+
+    fn service_entry_from_parsed(p: &parse_unit::ParsedUnit) -> ServiceEntry {
+        ServiceEntry {
+            command: p.command.clone(),
+            workdir: p.workdir.clone(),
+            description: sdtabfile::description_if_different(&p.description, &p.command),
+            restart: p.restart_policy.clone(),
+            env_file: p.env_file.clone(),
+            memory_max: p.memory_max.clone(),
+            cpu_quota: p.cpu_quota.clone(),
+            io_weight: p.io_weight.clone(),
+            timeout_stop: p.timeout_stop.clone(),
+            exec_start_pre: p.exec_start_pre.clone(),
+            exec_stop_post: p.exec_stop_post.clone(),
+            log_level_max: p.log_level_max.clone(),
+            env: p.env.clone(),
+            no_notify: p.no_notify,
+        }
+    }
+
     // --- Exhaustive field coverage tests ---
-    // These ensure timer_matches/service_matches compare ALL fields.
-    // If a new field is added to ParsedUnit/TimerEntry/ServiceEntry but not
-    // to the comparison function, one of these tests will fail.
+    // timer_entry_from_parsed / service_entry_from_parsed catch missing fields at compile time.
+    // The mutation tests below catch missing comparisons in timer_matches/service_matches at runtime.
 
     fn make_full_parsed_timer() -> parse_unit::ParsedUnit {
         parse_unit::ParsedUnit {
@@ -677,65 +721,6 @@ workdir = "/home/user/app"
             random_delay: Some("5m".to_string()),
             env: vec!["FOO=bar".to_string()],
             no_notify: true,
-        }
-    }
-
-    fn make_full_timer_entry() -> TimerEntry {
-        TimerEntry {
-            schedule: "0 9 * * *".to_string(),
-            command: "./run.sh".to_string(),
-            workdir: "/home/user".to_string(),
-            description: Some("my desc".to_string()),
-            env_file: Some("/env".to_string()),
-            memory_max: Some("512M".to_string()),
-            cpu_quota: Some("50%".to_string()),
-            io_weight: Some("10".to_string()),
-            timeout_stop: Some("30s".to_string()),
-            exec_start_pre: Some("/bin/true".to_string()),
-            exec_stop_post: Some("/bin/false".to_string()),
-            log_level_max: Some("warning".to_string()),
-            random_delay: Some("5m".to_string()),
-            env: vec!["FOO=bar".to_string()],
-            no_notify: true,
-        }
-    }
-
-    #[test]
-    fn test_timer_matches_all_fields_set() {
-        let current = make_full_parsed_timer();
-        let desired = make_full_timer_entry();
-        assert!(timer_matches(&current, &desired), "full match should return true");
-    }
-
-    #[test]
-    fn test_timer_matches_detects_each_field_change() {
-        let current = make_full_parsed_timer();
-        let base = make_full_timer_entry();
-
-        // Each field mutation must cause timer_matches to return false
-        let mutations: Vec<(&str, TimerEntry)> = vec![
-            ("schedule", TimerEntry { schedule: "0 10 * * *".into(), ..base.clone() }),
-            ("command", TimerEntry { command: "./other.sh".into(), ..base.clone() }),
-            ("workdir", TimerEntry { workdir: "/other".into(), ..base.clone() }),
-            ("description", TimerEntry { description: Some("changed".into()), ..base.clone() }),
-            ("env_file", TimerEntry { env_file: Some("/other.env".into()), ..base.clone() }),
-            ("memory_max", TimerEntry { memory_max: Some("1G".into()), ..base.clone() }),
-            ("cpu_quota", TimerEntry { cpu_quota: Some("100%".into()), ..base.clone() }),
-            ("io_weight", TimerEntry { io_weight: Some("50".into()), ..base.clone() }),
-            ("timeout_stop", TimerEntry { timeout_stop: Some("60s".into()), ..base.clone() }),
-            ("exec_start_pre", TimerEntry { exec_start_pre: Some("/bin/echo".into()), ..base.clone() }),
-            ("exec_stop_post", TimerEntry { exec_stop_post: Some("/bin/echo".into()), ..base.clone() }),
-            ("log_level_max", TimerEntry { log_level_max: Some("err".into()), ..base.clone() }),
-            ("random_delay", TimerEntry { random_delay: Some("10m".into()), ..base.clone() }),
-            ("env", TimerEntry { env: vec!["BAR=baz".into()], ..base.clone() }),
-            ("no_notify", TimerEntry { no_notify: false, ..base.clone() }),
-        ];
-
-        for (field, mutated) in &mutations {
-            assert!(
-                !timer_matches(&current, mutated),
-                "timer_matches should detect change in '{}'", field
-            );
         }
     }
 
@@ -762,36 +747,59 @@ workdir = "/home/user/app"
         }
     }
 
-    fn make_full_service_entry() -> ServiceEntry {
-        ServiceEntry {
-            command: "./run.sh".to_string(),
-            workdir: "/home/user".to_string(),
-            description: Some("my desc".to_string()),
-            restart: Some("on-failure".to_string()),
-            env_file: Some("/env".to_string()),
-            memory_max: Some("512M".to_string()),
-            cpu_quota: Some("50%".to_string()),
-            io_weight: Some("10".to_string()),
-            timeout_stop: Some("30s".to_string()),
-            exec_start_pre: Some("/bin/true".to_string()),
-            exec_stop_post: Some("/bin/false".to_string()),
-            log_level_max: Some("warning".to_string()),
-            env: vec!["FOO=bar".to_string()],
-            no_notify: true,
-        }
+    #[test]
+    fn test_timer_field_parity() {
+        // Compile-time guarantee: if TimerEntry gets a new field,
+        // timer_entry_from_parsed won't compile until ParsedUnit has it too.
+        let parsed = make_full_parsed_timer();
+        let entry = timer_entry_from_parsed(&parsed);
+        assert!(timer_matches(&parsed, &entry),
+            "ParsedUnit → TimerEntry conversion should produce a matching entry");
     }
 
     #[test]
-    fn test_service_matches_all_fields_set() {
-        let current = make_full_parsed_service();
-        let desired = make_full_service_entry();
-        assert!(service_matches(&current, &desired), "full match should return true");
+    fn test_service_field_parity() {
+        let parsed = make_full_parsed_service();
+        let entry = service_entry_from_parsed(&parsed);
+        assert!(service_matches(&parsed, &entry),
+            "ParsedUnit → ServiceEntry conversion should produce a matching entry");
+    }
+
+    #[test]
+    fn test_timer_matches_detects_each_field_change() {
+        let current = make_full_parsed_timer();
+        let base = timer_entry_from_parsed(&current);
+
+        let mutations: Vec<(&str, TimerEntry)> = vec![
+            ("schedule", TimerEntry { schedule: "0 10 * * *".into(), ..base.clone() }),
+            ("command", TimerEntry { command: "./other.sh".into(), ..base.clone() }),
+            ("workdir", TimerEntry { workdir: "/other".into(), ..base.clone() }),
+            ("description", TimerEntry { description: Some("changed".into()), ..base.clone() }),
+            ("env_file", TimerEntry { env_file: Some("/other.env".into()), ..base.clone() }),
+            ("memory_max", TimerEntry { memory_max: Some("1G".into()), ..base.clone() }),
+            ("cpu_quota", TimerEntry { cpu_quota: Some("100%".into()), ..base.clone() }),
+            ("io_weight", TimerEntry { io_weight: Some("50".into()), ..base.clone() }),
+            ("timeout_stop", TimerEntry { timeout_stop: Some("60s".into()), ..base.clone() }),
+            ("exec_start_pre", TimerEntry { exec_start_pre: Some("/bin/echo".into()), ..base.clone() }),
+            ("exec_stop_post", TimerEntry { exec_stop_post: Some("/bin/echo".into()), ..base.clone() }),
+            ("log_level_max", TimerEntry { log_level_max: Some("err".into()), ..base.clone() }),
+            ("random_delay", TimerEntry { random_delay: Some("10m".into()), ..base.clone() }),
+            ("env", TimerEntry { env: vec!["BAR=baz".into()], ..base.clone() }),
+            ("no_notify", TimerEntry { no_notify: false, ..base.clone() }),
+        ];
+
+        for (field, mutated) in &mutations {
+            assert!(
+                !timer_matches(&current, mutated),
+                "timer_matches should detect change in '{}'", field
+            );
+        }
     }
 
     #[test]
     fn test_service_matches_detects_each_field_change() {
         let current = make_full_parsed_service();
-        let base = make_full_service_entry();
+        let base = service_entry_from_parsed(&current);
 
         let mutations: Vec<(&str, ServiceEntry)> = vec![
             ("command", ServiceEntry { command: "./other.sh".into(), ..base.clone() }),
