@@ -98,6 +98,10 @@ sdtab apply Sdtabfile.toml
 
 > `sdtab remove` stops and disables the unit before deleting files. `sdtab apply --prune` only removes units with the `sdtab-` prefix — manually created systemd units are never touched.
 
+> `sdtab apply` updates changed units **in-place** (overwrite → daemon-reload) without stopping them first. Only units that actually need a restart are restarted: for services, description-only changes skip restart; for timers, service-side changes (command, env, etc.) take effect on the next trigger without restarting the timer.
+
+> `sdtab init` also installs a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill file to `~/.claude/commands/sdtab.md`, enabling `/sdtab` commands in any project.
+
 ## Schedule Syntax
 
 Standard cron expressions and convenient shortcuts:

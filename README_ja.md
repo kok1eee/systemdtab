@@ -98,6 +98,10 @@ sdtab apply Sdtabfile.toml
 
 > `sdtab remove` は実行中のユニットを停止・無効化してからファイルを削除します。`sdtab apply --prune` は `sdtab-` プレフィックス付きのユニットのみを削除対象とし、手動で作成した systemd ユニットには影響しません。
 
+> `sdtab apply` は変更されたユニットを**停止せずにファイルを上書き → daemon-reload** で更新します。restart が必要なユニットだけを再起動します: サービスの description のみの変更は restart をスキップ、タイマーのサービス側変更（コマンド、env など）は次回トリガーで反映されるため timer の restart は不要です。
+
+> `sdtab init` は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) のスキルファイルを `~/.claude/commands/sdtab.md` にインストールし、どのプロジェクトからでも `/sdtab` コマンドを使えるようにします。
+
 ## スケジュール構文
 
 標準的な cron 式と便利なショートカット:
