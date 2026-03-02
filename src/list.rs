@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use anyhow::Result;
 use serde::Serialize;
 
@@ -11,6 +13,8 @@ struct Entry {
     schedule: String,
     command: String,
     status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 }
 
 pub fn run(json: bool) -> Result<()> {
@@ -46,12 +50,20 @@ pub fn run(json: bool) -> Result<()> {
             }
         };
 
+        // description がコマンドと同じなら表示しない
+        let description = if unit.description != unit.command {
+            Some(unit.description.clone())
+        } else {
+            None
+        };
+
         entries.push(Entry {
             name: unit.name.clone(),
             type_str,
             schedule,
             command: unit.command.clone(),
             status,
+            description,
         });
     }
 
@@ -64,7 +76,32 @@ pub fn run(json: bool) -> Result<()> {
     Ok(())
 }
 
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max - 1])
+    }
+}
+
+fn format_status(status: &str, use_color: bool) -> String {
+    let (marker, color_code) = match status {
+        "active" => ("●", "\x1b[32m"),   // green
+        "failed" => ("●", "\x1b[31m"),   // red
+        "inactive" => ("○", "\x1b[33m"), // yellow
+        _ => ("○", "\x1b[90m"),          // gray
+    };
+
+    if use_color {
+        format!("{color_code}{marker}\x1b[0m {status}")
+    } else {
+        format!("{marker} {status}")
+    }
+}
+
 fn print_table(entries: &[Entry]) {
+    let use_color = std::io::stdout().is_terminal();
+
     let name_width = entries.iter().map(|e| e.name.len()).max().unwrap_or(4).max(4);
     let type_width = 7; // "service" is the longest
     let sched_width = entries
@@ -73,9 +110,10 @@ fn print_table(entries: &[Entry]) {
         .max()
         .unwrap_or(8)
         .max(8);
+    let cmd_max = 40;
     let cmd_width = entries
         .iter()
-        .map(|e| e.command.len())
+        .map(|e| e.command.len().min(cmd_max))
         .max()
         .unwrap_or(7)
         .max(7);
@@ -93,18 +131,28 @@ fn print_table(entries: &[Entry]) {
     );
 
     for entry in entries {
+        let cmd = truncate(&entry.command, cmd_max);
+        let status = format_status(&entry.status, use_color);
         println!(
             "{:<name_w$}  {:<type_w$}  {:<sched_w$}  {:<cmd_w$}  {}",
             entry.name,
             entry.type_str,
             entry.schedule,
-            entry.command,
-            entry.status,
+            cmd,
+            status,
             name_w = name_width,
             type_w = type_width,
             sched_w = sched_width,
             cmd_w = cmd_width,
         );
+
+        if let Some(desc) = &entry.description {
+            if use_color {
+                println!("  \x1b[90m{desc}\x1b[0m");
+            } else {
+                println!("  {desc}");
+            }
+        }
     }
 }
 

@@ -34,6 +34,7 @@ pub fn run(output: Option<&str>) -> Result<()> {
                         log_level_max: unit.log_level_max,
                         random_delay: unit.random_delay,
                         env: unit.env,
+                        no_notify: unit.no_notify,
                     },
                 );
             }
@@ -55,6 +56,7 @@ pub fn run(output: Option<&str>) -> Result<()> {
                         exec_stop_post: unit.exec_stop_post,
                         log_level_max: unit.log_level_max,
                         env: unit.env,
+                        no_notify: unit.no_notify,
                     },
                 );
             }
@@ -112,6 +114,7 @@ mod tests {
                 log_level_max: None,
                 random_delay: None,
                 env: vec![],
+                no_notify: false,
             },
         );
         let sdtabfile = Sdtabfile {

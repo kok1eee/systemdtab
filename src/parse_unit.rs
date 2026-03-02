@@ -39,7 +39,11 @@ pub struct ParsedUnit {
     pub log_level_max: Option<String>,
     pub random_delay: Option<String>,
     pub env: Vec<String>,
+    pub no_notify: bool,
 }
+
+// Note: OnFailure= line is also parsed but not stored as a separate field.
+// The on_failure state is derived from no_notify + config webhook at generation time.
 
 pub fn scan_all_units() -> Result<Vec<ParsedUnit>> {
     let unit_dir = init::unit_dir()?;
@@ -59,6 +63,11 @@ pub fn scan_all_units() -> Result<Vec<ParsedUnit>> {
         let filename = os_name.to_string_lossy();
 
         if !filename.starts_with("sdtab-") || !filename.ends_with(".service") {
+            continue;
+        }
+
+        // Skip template units (e.g., sdtab-notify@.service)
+        if filename.contains('@') {
             continue;
         }
 
@@ -130,6 +139,7 @@ pub fn parse_service_file(
     let mut exec_stop_post = None;
     let mut log_level_max = None;
     let mut env = Vec::new();
+    let mut no_notify = false;
 
     for line in service_content.lines() {
         let line = line.trim();
@@ -148,6 +158,9 @@ pub fn parse_service_file(
         }
         if let Some(val) = line.strip_prefix("# sdtab:command=") {
             original_command = Some(val.to_string());
+        }
+        if line == "# sdtab:no-notify=true" {
+            no_notify = true;
         }
 
         // Unit file directives
@@ -243,6 +256,7 @@ pub fn parse_service_file(
         log_level_max,
         random_delay,
         env,
+        no_notify,
     }
 }
 
@@ -428,5 +442,65 @@ RestartSec=5
         // No sdtab:command= metadata, so should shorten ExecStart
         let parsed = parse_service_file("agent", service, None, "");
         assert_eq!(parsed.command, "ambient-task-agent serve --port 3100");
+    }
+
+    #[test]
+    fn parse_no_notify_metadata() {
+        let service = "\
+# sdtab:type=timer
+# sdtab:cron=0 9 * * *
+# sdtab:no-notify=true
+[Unit]
+Description=[sdtab] task: test
+OnFailure=sdtab-notify@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/echo test
+WorkingDirectory=/home/user
+";
+
+        let parsed = parse_service_file("task", service, None, "");
+        assert!(parsed.no_notify);
+    }
+
+    #[test]
+    fn parse_with_on_failure() {
+        let service = "\
+# sdtab:type=service
+# sdtab:restart=always
+[Unit]
+Description=[sdtab] bot: python bot.py
+OnFailure=sdtab-notify@%n.service
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python bot.py
+WorkingDirectory=/home/user
+Restart=always
+RestartSec=5
+";
+
+        let parsed = parse_service_file("bot", service, None, "");
+        assert!(!parsed.no_notify);
+    }
+
+    #[test]
+    fn parse_without_on_failure() {
+        let service = "\
+# sdtab:type=timer
+# sdtab:cron=0 9 * * *
+[Unit]
+Description=[sdtab] task: echo hello
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/echo hello
+WorkingDirectory=/home/user
+";
+
+        let parsed = parse_service_file("task", service, None, "");
+        assert!(!parsed.no_notify);
     }
 }

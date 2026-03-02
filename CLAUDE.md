@@ -6,7 +6,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 
 | コマンド | 機能 |
 |---------|------|
-| `sdtab init` | linger 有効化 + ディレクトリ作成 + Claude Code スキルインストール |
+| `sdtab init [--slack-webhook URL]` | linger 有効化 + ディレクトリ作成 + Claude Code スキルインストール + Slack通知設定 |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | タイマー追加 |
 | `sdtab add "@service" "<command>" [--dry-run]` | 常駐サービス追加 |
 | `sdtab list [--json]` | 管理中タイマー・サービス一覧 |
@@ -38,6 +38,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `--log-level-max <level>` | 保存ログレベル上限（例: `warning`, `err`） |
 | `--random-delay <duration>` | タイマー発火のランダム遅延（例: `5m`）。タイマーのみ |
 | `--env <KEY=VALUE>` | 環境変数（複数指定可: `--env "PATH=..." --env "FOO=bar"`） |
+| `--no-notify` | このユニットの失敗通知を無効化 |
 | `--dry-run` | 生成されるユニットファイルをプレビュー（作成しない） |
 
 ## アーキテクチャ
@@ -48,7 +49,8 @@ src/
 ├── cron.rs         # cron式 → OnCalendar変換
 ├── unit.rs         # .service/.timer ファイル生成（タイマー + 常駐サービス）
 ├── systemctl.rs    # systemctl --user ラッパー
-├── init.rs         # sdtab init
+├── config.rs       # グローバル設定（~/.config/sdtab/config.toml）
+├── init.rs         # sdtab init（Slack通知テンプレート生成含む）
 ├── add.rs          # sdtab add
 ├── parse_unit.rs   # ユニットファイル解析（共通モジュール）
 ├── sdtabfile.rs    # TOML シリアライズ/デシリアライズ構造体（export/apply 共有）
@@ -68,7 +70,8 @@ src/
 
 - ユーザーレベルタイマー（`--user`）のみ。システムレベルは対象外
 - 管理ユニットには `sdtab-` プレフィックスを付与
-- メタデータは `.service` ファイルのコメントに保存（`# sdtab:type=`, `# sdtab:cron=`, `# sdtab:restart=`, `# sdtab:command=`）
+- メタデータは `.service` ファイルのコメントに保存（`# sdtab:type=`, `# sdtab:cron=`, `# sdtab:restart=`, `# sdtab:command=`, `# sdtab:no-notify=true`）
+- 失敗通知は systemd `OnFailure=` + テンプレートユニット `sdtab-notify@.service` で実現（Slack webhook）
 - cron パーサーは自前実装（依存最小化）
 - 依存: `clap` + `anyhow` + `serde` + `toml`
 

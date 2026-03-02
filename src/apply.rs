@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::sdtabfile::{self, Sdtabfile, ServiceEntry, TimerEntry};
-use crate::{add, cron, init, parse_unit, remove, systemctl, unit};
+use crate::{add, config, cron, init, parse_unit, remove, systemctl, unit};
 
 enum DiffStatus {
     Added,
@@ -214,6 +214,8 @@ pub fn run(file: &str, prune: bool, dry_run: bool) -> Result<()> {
 fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitType) -> Result<()> {
     let unit_dir = init::unit_dir()?;
     let dir_path = Path::new(&unit_dir);
+    let cfg = config::load()?;
+    let has_webhook = cfg.notify.slack_webhook.is_some();
 
     match unit_type {
         parse_unit::UnitType::Timer => {
@@ -229,7 +231,13 @@ fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitT
                 None
             };
 
-            let config = unit::UnitConfig {
+            let on_failure = if !entry.no_notify && has_webhook {
+                Some("sdtab-notify@%n.service".to_string())
+            } else {
+                None
+            };
+
+            let unit_config = unit::UnitConfig {
                 name: name.to_string(),
                 command: resolved_command,
                 workdir,
@@ -248,14 +256,16 @@ fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitT
                 random_delay: entry.random_delay.clone(),
                 env: entry.env.clone(),
                 original_command,
+                on_failure,
+                no_notify: entry.no_notify,
             };
 
             let service_path = dir_path.join(unit::service_filename(name));
-            fs::write(&service_path, unit::generate_service(&config))
+            fs::write(&service_path, unit::generate_service(&unit_config))
                 .with_context(|| format!("Failed to write {}", service_path.display()))?;
 
             let timer_path = dir_path.join(unit::timer_filename(name));
-            fs::write(&timer_path, unit::generate_timer(&config))
+            fs::write(&timer_path, unit::generate_timer(&unit_config))
                 .with_context(|| format!("Failed to write {}", timer_path.display()))?;
         }
         parse_unit::UnitType::Service => {
@@ -269,7 +279,13 @@ fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitT
                 None
             };
 
-            let config = unit::UnitConfig {
+            let on_failure = if !entry.no_notify && has_webhook {
+                Some("sdtab-notify@%n.service".to_string())
+            } else {
+                None
+            };
+
+            let unit_config = unit::UnitConfig {
                 name: name.to_string(),
                 command: resolved_command,
                 workdir,
@@ -288,10 +304,12 @@ fn update_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitT
                 random_delay: None,
                 env: entry.env.clone(),
                 original_command,
+                on_failure,
+                no_notify: entry.no_notify,
             };
 
             let service_path = dir_path.join(unit::service_filename(name));
-            fs::write(&service_path, unit::generate_daemon_service(&config))
+            fs::write(&service_path, unit::generate_daemon_service(&unit_config))
                 .with_context(|| format!("Failed to write {}", service_path.display()))?;
         }
     }
@@ -319,6 +337,7 @@ fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitTy
                 log_level_max: entry.log_level_max.clone(),
                 random_delay: entry.random_delay.clone(),
                 env: entry.env.clone(),
+                no_notify: entry.no_notify,
                 dry_run: false,
             })?;
         }
@@ -341,6 +360,7 @@ fn apply_entry(sdtabfile: &Sdtabfile, name: &str, unit_type: &parse_unit::UnitTy
                 log_level_max: entry.log_level_max.clone(),
                 random_delay: None,
                 env: entry.env.clone(),
+                no_notify: entry.no_notify,
                 dry_run: false,
             })?;
         }
@@ -389,6 +409,7 @@ fn timer_matches(current: &parse_unit::ParsedUnit, desired: &TimerEntry) -> bool
         && current.log_level_max == desired.log_level_max
         && current.random_delay == desired.random_delay
         && current.env == desired.env
+        && current.no_notify == desired.no_notify
 }
 
 fn service_matches(current: &parse_unit::ParsedUnit, desired: &ServiceEntry) -> bool {
@@ -407,6 +428,7 @@ fn service_matches(current: &parse_unit::ParsedUnit, desired: &ServiceEntry) -> 
         && current.exec_stop_post == desired.exec_stop_post
         && current.log_level_max == desired.log_level_max
         && current.env == desired.env
+        && current.no_notify == desired.no_notify
 }
 
 
@@ -525,6 +547,7 @@ workdir = "/home/user/app"
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            no_notify: false,
         }
     }
 
@@ -544,6 +567,7 @@ workdir = "/home/user/app"
             log_level_max: None,
             random_delay: None,
             env: vec![],
+            no_notify: false,
         }
     }
 
@@ -562,6 +586,7 @@ workdir = "/home/user/app"
             exec_stop_post: None,
             log_level_max: None,
             env: vec![],
+            no_notify: false,
         }
     }
 

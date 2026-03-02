@@ -1,5 +1,6 @@
 mod add;
 mod apply;
+mod config;
 mod cron;
 mod disable;
 mod edit;
@@ -30,7 +31,14 @@ struct Cli {
 #[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Initialize sdtab (enable linger, create directories)
-    Init,
+    Init {
+        /// Slack webhook URL for failure notifications
+        #[arg(long)]
+        slack_webhook: Option<String>,
+        /// Slack user/group ID to mention in notifications (e.g., U0700J8MN3W)
+        #[arg(long)]
+        slack_mention: Option<String>,
+    },
     /// Add a new timer or service
     ///
     /// sdtab add "<schedule>" "<command>"
@@ -109,7 +117,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init => init::run()?,
+        Commands::Init { slack_webhook, slack_mention } => init::run(slack_webhook.as_deref(), slack_mention.as_deref())?,
         Commands::Add(opts) => add::run(opts)?,
         Commands::List { json } => list::run(json)?,
         Commands::Remove { name } => remove::run(&name)?,

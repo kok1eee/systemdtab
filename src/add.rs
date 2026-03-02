@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 
-use crate::{cron, init, systemctl, unit};
+use crate::{config, cron, init, systemctl, unit};
 
 #[derive(Args)]
 pub struct AddOptions {
@@ -54,6 +54,9 @@ pub struct AddOptions {
     /// Environment variables (e.g., --env "PATH=/usr/bin" --env "FOO=bar"). Repeatable
     #[arg(long)]
     pub env: Vec<String>,
+    /// Disable failure notification for this unit
+    #[arg(long)]
+    pub no_notify: bool,
     /// Preview generated unit files without creating them
     #[arg(long)]
     pub dry_run: bool,
@@ -76,6 +79,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     }
 
     let dry_run = opts.dry_run;
+    let no_notify = opts.no_notify;
     let name = opts.name.unwrap_or_else(|| unit::derive_name(&opts.command));
 
     let unit_dir = init::unit_dir()?;
@@ -100,6 +104,8 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         None
     };
 
+    let on_failure = resolve_on_failure(no_notify)?;
+
     let config = unit::UnitConfig {
         name: name.clone(),
         command: resolved_command.clone(),
@@ -120,6 +126,8 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         random_delay: opts.random_delay,
         env: opts.env,
         original_command,
+        on_failure,
+        no_notify,
     };
 
     let service_content = unit::generate_service(&config);
@@ -168,6 +176,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
 
 fn run_service(opts: AddOptions) -> Result<()> {
     let dry_run = opts.dry_run;
+    let no_notify = opts.no_notify;
 
     if let Some(ref r) = opts.restart {
         match r.as_str() {
@@ -206,6 +215,8 @@ fn run_service(opts: AddOptions) -> Result<()> {
         None
     };
 
+    let on_failure = resolve_on_failure(no_notify)?;
+
     let config = unit::UnitConfig {
         name: name.clone(),
         command: resolved_command.clone(),
@@ -225,6 +236,8 @@ fn run_service(opts: AddOptions) -> Result<()> {
         random_delay: None, // timer only
         env: opts.env,
         original_command,
+        on_failure,
+        no_notify,
     };
 
     let service_content = unit::generate_daemon_service(&config);
@@ -253,6 +266,18 @@ fn run_service(opts: AddOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_on_failure(no_notify: bool) -> Result<Option<String>> {
+    if no_notify {
+        return Ok(None);
+    }
+    let cfg = config::load()?;
+    if cfg.notify.slack_webhook.is_some() {
+        Ok(Some("sdtab-notify@%n.service".to_string()))
+    } else {
+        Ok(None)
+    }
 }
 
 fn resolve_workdir(workdir: Option<String>) -> Result<String> {

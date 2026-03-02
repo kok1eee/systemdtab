@@ -18,7 +18,8 @@ sdtab list
 ```
 NAME    TYPE     SCHEDULE     COMMAND               STATUS
 report  timer    0 9 * * *    uv run ./report.py    Tue 2026-03-03 09:00:00 JST
-web     service  @service     node server.js        active
+web     service  @service     node server.js        ● active
+  Web Server
 ```
 
 ## Features
@@ -27,6 +28,8 @@ web     service  @service     node server.js        active
 - **Long-running services** — use `@service` to create always-on daemons with restart policies
 - **Resource limits** — set memory, CPU, and I/O constraints per unit
 - **Export/Import** — `sdtab export` dumps config to TOML, `sdtab apply` restores it on another machine
+- **Failure notifications** — Slack webhook alerts when a unit fails (`OnFailure=` mechanism)
+- **Colored status** — `● active` (green), `● failed` (red), `○ inactive` (yellow) at a glance; descriptions shown as gray subtitles; auto-disabled when piped
 - **Zero dependencies beyond systemd** — no database, no daemon, just unit files
 
 ## Install
@@ -57,6 +60,9 @@ cp target/release/sdtab ~/.local/bin/
 # Initialize sdtab (enables linger, creates config directory)
 sdtab init
 
+# Optional: set up Slack failure notifications
+sdtab init --slack-webhook "https://hooks.slack.com/services/T.../B.../xxx"
+
 # Add a daily task at 9:00 AM
 sdtab add "0 9 * * *" "./backup.sh" --name backup --memory-max 512M
 
@@ -82,10 +88,10 @@ sdtab apply Sdtabfile.toml
 
 | Command | Description |
 |---------|-------------|
-| `sdtab init` | Enable linger and create directories |
+| `sdtab init [--slack-webhook URL] [--slack-mention USER_ID]` | Enable linger, create directories, set up notifications |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | Add a timer |
 | `sdtab add "@service" "<command>" [--dry-run]` | Add a long-running service |
-| `sdtab list [--json]` | List all managed timers and services |
+| `sdtab list [--json]` | List all managed timers and services (long commands are truncated) |
 | `sdtab status <name>` | Show detailed status with next 5 run times |
 | `sdtab edit <name>` | Edit unit file with $EDITOR |
 | `sdtab logs <name> [-f] [-n N]` | View logs (journalctl) |
@@ -131,9 +137,42 @@ Standard cron expressions and convenient shortcuts:
 | `--cpu-quota <percent>` | CPU limit (e.g. `50%`, `200%`) |
 | `--io-weight <N>` | I/O priority: 1-10000 (default: 100) |
 | `--timeout-stop <duration>` | Stop timeout (e.g. `30s`) |
+| `--exec-start-pre <cmd>` | Command to run before ExecStart |
+| `--exec-stop-post <cmd>` | Command to run after process stops |
+| `--log-level-max <level>` | Max log level to store (e.g. `warning`, `err`) |
 | `--random-delay <duration>` | Random delay for timer firing (e.g. `5m`) |
 | `--env <KEY=VALUE>` | Environment variable (repeatable) |
+| `--no-notify` | Disable failure notification for this unit |
 | `--dry-run` | Preview generated unit files without creating them |
+
+## Failure Notifications
+
+Set up Slack notifications for when any unit fails:
+
+```bash
+sdtab init --slack-webhook "https://hooks.slack.com/services/T.../B.../xxx"
+
+# With user mention
+sdtab init --slack-webhook "https://hooks.slack.com/services/T.../B.../xxx" --slack-mention "U0700J8MN3W"
+```
+
+This creates a template unit `sdtab-notify@.service` and adds `OnFailure=sdtab-notify@%n.service` to all subsequently created units. When a timer or service fails, systemd triggers the notification unit, which sends a message to Slack via `curl`.
+
+To opt out of notifications for a specific unit:
+
+```bash
+sdtab add "0 9 * * *" "./quiet-task.sh" --no-notify
+```
+
+In `Sdtabfile.toml`, use `no_notify = true`:
+
+```toml
+[timers.quiet-task]
+schedule = "0 9 * * *"
+command = "./quiet-task.sh"
+workdir = "/home/user"
+no_notify = true
+```
 
 ## Export Format
 
@@ -165,6 +204,7 @@ sdtab generates standard systemd unit files under `~/.config/systemd/user/` with
 ├── sdtab-backup.service    # [Service] definition
 ├── sdtab-backup.timer      # [Timer] with OnCalendar
 ├── sdtab-web.service       # Long-running service
+├── sdtab-notify@.service   # Failure notification template (if webhook configured)
 ```
 
 Metadata is stored as comments in the service file (`# sdtab:type=`, `# sdtab:cron=`, etc.), so sdtab can reconstruct the original configuration without an external database.
@@ -183,7 +223,7 @@ Metadata is stored as comments in the service file (`# sdtab:type=`, `# sdtab:cr
 
 ## Testing
 
-The cron parser, unit file generation, and TOML serialization are covered by 71 unit tests:
+The cron parser, unit file generation, and TOML serialization are covered by 93 unit tests:
 
 ```bash
 cargo test

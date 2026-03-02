@@ -37,6 +37,8 @@ pub struct TimerEntry {
     pub random_delay: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_notify: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -68,6 +70,8 @@ pub struct ServiceEntry {
     pub log_level_max: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_notify: bool,
 }
 
 /// Convert description to Option: None if it equals command (convention: omit when same)
@@ -123,6 +127,7 @@ mod tests {
                 log_level_max: None,
                 random_delay: None,
                 env: vec![],
+                no_notify: false,
             },
         );
         let file = Sdtabfile {
@@ -154,6 +159,7 @@ mod tests {
                 exec_stop_post: None,
                 log_level_max: None,
                 env: vec!["NODE_ENV=production".to_string()],
+                no_notify: false,
             },
         );
         let file = Sdtabfile {
@@ -189,6 +195,7 @@ mod tests {
                 exec_stop_post: None,
                 log_level_max: None,
                 env: vec![],
+                no_notify: false,
             },
         );
         let file = Sdtabfile {
@@ -204,5 +211,92 @@ mod tests {
         let file: Sdtabfile = toml::from_str("").unwrap();
         assert!(file.timers.is_empty());
         assert!(file.services.is_empty());
+    }
+
+    #[test]
+    fn test_no_notify_serialization() {
+        let mut timers = BTreeMap::new();
+        timers.insert(
+            "quiet".to_string(),
+            TimerEntry {
+                schedule: "0 9 * * *".to_string(),
+                command: "echo test".to_string(),
+                workdir: "/home/user".to_string(),
+                description: None,
+                env_file: None,
+                memory_max: None,
+                cpu_quota: None,
+                io_weight: None,
+                timeout_stop: None,
+                exec_start_pre: None,
+                exec_stop_post: None,
+                log_level_max: None,
+                random_delay: None,
+                env: vec![],
+                no_notify: true,
+            },
+        );
+        let file = Sdtabfile {
+            timers,
+            services: BTreeMap::new(),
+        };
+        let toml_str = toml::to_string_pretty(&file).unwrap();
+        assert!(toml_str.contains("no_notify = true"));
+    }
+
+    #[test]
+    fn test_no_notify_false_omitted() {
+        let mut timers = BTreeMap::new();
+        timers.insert(
+            "normal".to_string(),
+            TimerEntry {
+                schedule: "0 9 * * *".to_string(),
+                command: "echo test".to_string(),
+                workdir: "/home/user".to_string(),
+                description: None,
+                env_file: None,
+                memory_max: None,
+                cpu_quota: None,
+                io_weight: None,
+                timeout_stop: None,
+                exec_start_pre: None,
+                exec_stop_post: None,
+                log_level_max: None,
+                random_delay: None,
+                env: vec![],
+                no_notify: false,
+            },
+        );
+        let file = Sdtabfile {
+            timers,
+            services: BTreeMap::new(),
+        };
+        let toml_str = toml::to_string_pretty(&file).unwrap();
+        assert!(!toml_str.contains("no_notify"));
+    }
+
+    #[test]
+    fn test_no_notify_deserialization() {
+        let toml_str = r#"
+[timers.quiet]
+schedule = "0 9 * * *"
+command = "echo test"
+workdir = "/home/user"
+no_notify = true
+"#;
+        let file: Sdtabfile = toml::from_str(toml_str).unwrap();
+        assert!(file.timers["quiet"].no_notify);
+    }
+
+    #[test]
+    fn test_no_notify_default_false() {
+        let toml_str = r#"
+[timers.normal]
+schedule = "0 9 * * *"
+command = "echo test"
+workdir = "/home/user"
+"#;
+        let file: Sdtabfile = toml::from_str(toml_str).unwrap();
+        assert!(!file.timers["normal"].no_notify);
     }
 }

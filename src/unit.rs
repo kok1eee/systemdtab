@@ -20,6 +20,8 @@ pub struct UnitConfig {
     pub random_delay: Option<String>,
     pub env: Vec<String>,
     pub original_command: Option<String>,
+    pub on_failure: Option<String>,
+    pub no_notify: bool,
 }
 
 pub fn generate_service(config: &UnitConfig) -> String {
@@ -30,6 +32,15 @@ pub fn generate_service(config: &UnitConfig) -> String {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
         None => String::new(),
     };
+    let no_notify_meta = if config.no_notify {
+        "# sdtab:no-notify=true\n"
+    } else {
+        ""
+    };
+    let on_failure_line = match &config.on_failure {
+        Some(target) => format!("OnFailure={}\n", target),
+        None => String::new(),
+    };
     let env_line = match &config.env_file {
         Some(path) => format!("EnvironmentFile={}\n", path),
         None => String::new(),
@@ -38,8 +49,10 @@ pub fn generate_service(config: &UnitConfig) -> String {
         "# sdtab:type=timer\n\
          # sdtab:cron={cron}\n\
          {command_meta}\
+         {no_notify_meta}\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
+         {on_failure_line}\
          \n\
          [Service]\n\
          Type=oneshot\n\
@@ -50,8 +63,10 @@ pub fn generate_service(config: &UnitConfig) -> String {
          {resource_lines}",
         cron = cron,
         command_meta = command_meta,
+        no_notify_meta = no_notify_meta,
         name = config.name,
         desc = config.description,
+        on_failure_line = on_failure_line,
         command = config.command,
         workdir = config.workdir,
         global_env = global_env,
@@ -70,6 +85,15 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
         None => String::new(),
     };
+    let no_notify_meta = if config.no_notify {
+        "# sdtab:no-notify=true\n"
+    } else {
+        ""
+    };
+    let on_failure_line = match &config.on_failure {
+        Some(target) => format!("OnFailure={}\n", target),
+        None => String::new(),
+    };
 
     let env_line = match &config.env_file {
         Some(path) => format!("EnvironmentFile={}\n", path),
@@ -83,8 +107,10 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         "# sdtab:type=service\n\
          {restart_meta}\
          {command_meta}\
+         {no_notify_meta}\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
+         {on_failure_line}\
          After=network-online.target\n\
          \n\
          [Service]\n\
@@ -100,8 +126,10 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          WantedBy=default.target\n",
         restart_meta = restart_meta,
         command_meta = command_meta,
+        no_notify_meta = no_notify_meta,
         name = config.name,
         desc = config.description,
+        on_failure_line = on_failure_line,
         command = config.command,
         workdir = config.workdir,
         restart = restart,
@@ -284,6 +312,8 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let service = generate_service(&config);
@@ -322,6 +352,8 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let timer = generate_timer(&config);
@@ -357,6 +389,8 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let timer = generate_timer(&config);
@@ -385,6 +419,8 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let service = generate_daemon_service(&config);
@@ -420,6 +456,8 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let service = generate_daemon_service(&config);
@@ -457,6 +495,8 @@ mod tests {
             random_delay: Some("5m".to_string()),
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let service = generate_service(&config);
@@ -492,6 +532,8 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let service = generate_daemon_service(&config);
@@ -528,10 +570,112 @@ mod tests {
             random_delay: None,
             env: vec![],
             original_command: None,
+            on_failure: None,
+            no_notify: false,
         };
 
         let service = generate_service(&config);
         assert!(!service.contains("MemoryMax"));
         assert!(!service.contains("CPUQuota"));
+    }
+
+    #[test]
+    fn test_service_with_on_failure() {
+        let config = UnitConfig {
+            name: "report".to_string(),
+            command: "echo test".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "test".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 09:00:00".to_string()),
+                on_boot_sec: None,
+                is_service: false,
+                display: None,
+            }),
+            restart_policy: None,
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
+            env: vec![],
+            original_command: None,
+            on_failure: Some("sdtab-notify@%n.service".to_string()),
+            no_notify: false,
+        };
+
+        let service = generate_service(&config);
+        assert!(service.contains("OnFailure=sdtab-notify@%n.service"));
+        assert!(!service.contains("# sdtab:no-notify=true"));
+    }
+
+    #[test]
+    fn test_service_no_notify() {
+        let config = UnitConfig {
+            name: "quiet".to_string(),
+            command: "echo test".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "test".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 09:00:00".to_string()),
+                on_boot_sec: None,
+                is_service: false,
+                display: None,
+            }),
+            restart_policy: None,
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
+            env: vec![],
+            original_command: None,
+            on_failure: None,
+            no_notify: true,
+        };
+
+        let service = generate_service(&config);
+        assert!(service.contains("# sdtab:no-notify=true"));
+        assert!(!service.contains("OnFailure="));
+    }
+
+    #[test]
+    fn test_daemon_with_on_failure() {
+        let config = UnitConfig {
+            name: "bot".to_string(),
+            command: "python bot.py".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "python bot.py".to_string(),
+            cron_expr: None,
+            schedule: None,
+            restart_policy: Some("always".to_string()),
+            env_file: None,
+            memory_max: None,
+            cpu_quota: None,
+            io_weight: None,
+            timeout_stop: None,
+            exec_start_pre: None,
+            exec_stop_post: None,
+            log_level_max: None,
+            random_delay: None,
+            env: vec![],
+            original_command: None,
+            on_failure: Some("sdtab-notify@%n.service".to_string()),
+            no_notify: false,
+        };
+
+        let service = generate_daemon_service(&config);
+        assert!(service.contains("OnFailure=sdtab-notify@%n.service"));
+        assert!(!service.contains("# sdtab:no-notify=true"));
     }
 }

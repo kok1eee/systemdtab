@@ -4,9 +4,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result};
 
-use crate::systemctl;
+use crate::{config, systemctl};
 
-pub fn run() -> Result<()> {
+pub fn run(slack_webhook: Option<&str>, slack_mention: Option<&str>) -> Result<()> {
     // 1. Enable linger for the current user
     let user = std::env::var("USER").context("Could not determine current user")?;
     println!("Enabling linger for user '{}'...", user);
@@ -44,15 +44,75 @@ pub fn run() -> Result<()> {
         println!("Exists: {}", env_path);
     }
 
-    // 4. Install Claude Code skill file
+    // 4. Set up Slack failure notification if webhook or mention provided
+    if slack_webhook.is_some() || slack_mention.is_some() {
+        setup_notify(slack_webhook, slack_mention)?;
+    }
+
+    // 5. Install Claude Code skill file
     install_claude_skill()?;
 
-    // 5. Reload systemd user daemon
+    // 6. Reload systemd user daemon
     println!("Reloading systemd user daemon...");
     systemctl::daemon_reload()?;
 
     println!("sdtab initialized successfully.");
     Ok(())
+}
+
+fn setup_notify(webhook: Option<&str>, mention: Option<&str>) -> Result<()> {
+    // Load existing config and update
+    let mut cfg = config::load()?;
+    if let Some(webhook) = webhook {
+        cfg.notify.slack_webhook = Some(webhook.to_string());
+    }
+    if let Some(mention) = mention {
+        cfg.notify.slack_mention = Some(mention.to_string());
+    }
+    config::save(&cfg)?;
+    println!("Saved: {}", config::config_path()?);
+
+    let webhook = cfg.notify.slack_webhook.as_deref()
+        .context("Slack webhook URL is required. Use --slack-webhook to set it.")?;
+
+    // Write notify.env
+    let notify_env_path = notify_env_path()?;
+    let content = format!("SDTAB_SLACK_WEBHOOK={}\n", webhook);
+    fs::write(&notify_env_path, &content)
+        .with_context(|| format!("Failed to write {}", notify_env_path))?;
+    println!("Created: {}", notify_env_path);
+
+    // Build notification message
+    let mention_prefix = match &cfg.notify.slack_mention {
+        Some(id) => format!("<@{}> ", id),
+        None => String::new(),
+    };
+
+    // Generate template unit sdtab-notify@.service
+    let unit_dir = unit_dir()?;
+    let template_path = format!("{}/sdtab-notify@.service", unit_dir);
+    let template = format!(
+        "[Unit]\n\
+         Description=[sdtab] Failure notification for %i\n\
+         \n\
+         [Service]\n\
+         Type=oneshot\n\
+         ExecStart=/bin/sh -c 'curl -s -X POST -H \"Content-Type: application/json\" \
+         -d \"{{\\\"text\\\":\\\"{mention_prefix}[sdtab] %i failed on %H\\\"}}\" \"$SDTAB_SLACK_WEBHOOK\"'\n\
+         EnvironmentFile={env_path}\n",
+        mention_prefix = mention_prefix,
+        env_path = notify_env_path
+    );
+    fs::write(&template_path, &template)
+        .with_context(|| format!("Failed to write {}", template_path))?;
+    println!("Created: {}", template_path);
+
+    Ok(())
+}
+
+pub fn notify_env_path() -> Result<String> {
+    let config = config_dir()?;
+    Ok(format!("{}/notify.env", config))
 }
 
 const SKILL_CONTENT: &str = include_str!("../skill/sdtab.md");
