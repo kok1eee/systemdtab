@@ -20,23 +20,21 @@ pub fn run(name: &str) -> Result<()> {
     if is_timer {
         let timer_unit = unit::timer_filename(name);
         if let Err(e) = systemctl::enable_and_start(&timer_unit) {
-            eprintln!("Failed to enable timer '{}': {}", name, e);
             eprintln!();
             eprintln!("  Troubleshoot with:");
             eprintln!("    sdtab status {}    # Check detailed status", name);
             eprintln!("    sdtab logs {}      # View logs", name);
-            return Ok(());
+            bail!("Failed to enable timer '{}': {}", name, e);
         }
         println!("Enabled timer '{}'.", name);
     } else {
         let service_unit = unit::service_filename(name);
         if let Err(e) = systemctl::enable_and_start(&service_unit) {
-            eprintln!("Failed to enable service '{}': {}", name, e);
             eprintln!();
             eprintln!("  Troubleshoot with:");
             eprintln!("    sdtab status {}    # Check detailed status", name);
             eprintln!("    sdtab logs {}      # View logs", name);
-            return Ok(());
+            bail!("Failed to enable service '{}': {}", name, e);
         }
         println!("Enabled service '{}'.", name);
     }

@@ -154,12 +154,11 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     systemctl::daemon_reload()?;
     let timer_unit = unit::timer_filename(&name);
     if let Err(e) = systemctl::enable_and_start(&timer_unit) {
-        eprintln!("Warning: Timer '{}' was created but failed to start: {}", name, e);
         eprintln!();
         eprintln!("  Troubleshoot with:");
         eprintln!("    sdtab status {}    # Check detailed status", name);
         eprintln!("    sdtab logs {}      # View logs", name);
-        return Ok(());
+        bail!("Timer '{}' was created but failed to start: {}", name, e);
     }
 
     println!("Timer '{}' is now active.", name);
@@ -263,12 +262,11 @@ fn run_service(opts: AddOptions) -> Result<()> {
     systemctl::daemon_reload()?;
     let service_unit = unit::service_filename(&name);
     if let Err(e) = systemctl::enable_and_start(&service_unit) {
-        eprintln!("Warning: Service '{}' was created but failed to start: {}", name, e);
         eprintln!();
         eprintln!("  Troubleshoot with:");
         eprintln!("    sdtab status {}    # Check detailed status", name);
         eprintln!("    sdtab logs {}      # View logs", name);
-        return Ok(());
+        bail!("Service '{}' was created but failed to start: {}", name, e);
     }
 
     let restart_display = opts.restart.as_deref().unwrap_or("always");
