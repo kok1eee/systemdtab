@@ -36,8 +36,12 @@ enum Commands {
     /// sdtab add "<schedule>" "<command>"
     /// Use @service for persistent daemons: sdtab add "@service" "<command>"
     Add(add::AddOptions),
-    /// List all managed timers
-    List,
+    /// List all managed timers and services
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Remove a timer or service
     Remove {
         /// Timer/service name to remove
@@ -107,7 +111,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init => init::run()?,
         Commands::Add(opts) => add::run(opts)?,
-        Commands::List => list::run()?,
+        Commands::List { json } => list::run(json)?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
         Commands::Logs { name, follow, lines, priority } => logs::run(&name, follow, lines, priority)?,

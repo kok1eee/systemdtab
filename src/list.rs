@@ -2,20 +2,24 @@ use anyhow::Result;
 
 use crate::{parse_unit, systemctl, unit};
 
-pub fn run() -> Result<()> {
+struct Entry {
+    name: String,
+    type_str: &'static str,
+    schedule: String,
+    command: String,
+    status: String,
+}
+
+pub fn run(json: bool) -> Result<()> {
     let units = parse_unit::scan_all_units()?;
 
     if units.is_empty() {
-        println!("No timers or services found.");
+        if json {
+            println!("[]");
+        } else {
+            println!("No timers or services found.");
+        }
         return Ok(());
-    }
-
-    struct Entry {
-        name: String,
-        type_str: &'static str,
-        schedule: String,
-        command: String,
-        status: String,
     }
 
     let mut entries: Vec<Entry> = Vec::new();
@@ -48,7 +52,16 @@ pub fn run() -> Result<()> {
         });
     }
 
-    // Calculate column widths
+    if json {
+        print_json(&entries);
+    } else {
+        print_table(&entries);
+    }
+
+    Ok(())
+}
+
+fn print_table(entries: &[Entry]) {
     let name_width = entries.iter().map(|e| e.name.len()).max().unwrap_or(4).max(4);
     let type_width = 7; // "service" is the longest
     let sched_width = entries
@@ -76,7 +89,7 @@ pub fn run() -> Result<()> {
         cmd_w = cmd_width,
     );
 
-    for entry in &entries {
+    for entry in entries {
         println!(
             "{:<name_w$}  {:<type_w$}  {:<sched_w$}  {:<cmd_w$}  {}",
             entry.name,
@@ -90,8 +103,32 @@ pub fn run() -> Result<()> {
             cmd_w = cmd_width,
         );
     }
+}
 
-    Ok(())
+fn print_json(entries: &[Entry]) {
+    println!("[");
+    for (i, entry) in entries.iter().enumerate() {
+        let comma = if i + 1 < entries.len() { "," } else { "" };
+        println!(
+            "  {{\"name\":{},\"type\":\"{}\",\"schedule\":{},\"command\":{},\"status\":{}}}{}",
+            json_str(&entry.name),
+            entry.type_str,
+            json_str(&entry.schedule),
+            json_str(&entry.command),
+            json_str(&entry.status),
+            comma,
+        );
+    }
+    println!("]");
+}
+
+fn json_str(s: &str) -> String {
+    format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    )
 }
 
 fn format_next_run(raw: &str) -> String {

@@ -159,6 +159,43 @@ sdtab generates standard systemd unit files under `~/.config/systemd/user/` with
 
 Metadata is stored as comments in the service file (`# sdtab:type=`, `# sdtab:cron=`, etc.), so sdtab can reconstruct the original configuration without an external database.
 
+## AI Agent Ready
+
+sdtab is designed to work with AI coding agents (Claude Code, Cline, Devin, Cursor, etc.) out of the box.
+
+**The problem**: systemd is notoriously hard for AI agents to operate. Creating a timer requires writing two files in the correct format, placing them in the right directory, running `daemon-reload`, then `enable --now`. One mistake and nothing works.
+
+**The solution**: `sdtab add "0 9 * * *" "./backup.sh"` — one command, done.
+
+### What's included
+
+- **`CLAUDE.md`** — project instructions that AI agents read automatically. Contains the full command reference, architecture, and design decisions.
+- **Skill file** — a pre-built prompt (`sdtab.md`) that teaches Claude Code how to manage timers and services through sdtab.
+- **`--dry-run`** — lets agents preview generated unit files before committing.
+- **`--json`** — machine-readable output for programmatic use.
+
+```bash
+# Agent can list units and parse the output
+sdtab list --json
+```
+
+```json
+[
+  {"name":"backup","type":"timer","schedule":"0 3 * * *","command":"./backup.sh","status":"Mon 2026-03-02 03:00:00 JST"},
+  {"name":"web","type":"service","schedule":"@service","command":"node index.js","status":"active"}
+]
+```
+
+### Comparison
+
+| Feature | raw systemd | crontab | sdtab |
+|---------|------------|---------|-------|
+| Timer + service in one command | No (2 files + 3 commands) | N/A (no services) | Yes |
+| AI agent friendly | No | Partial | Yes |
+| Export/import config | No | No | Yes (TOML) |
+| Resource limits | Manual | No | `--memory-max`, `--cpu-quota` |
+| Machine-readable output | `systemctl show` (verbose) | No | `--json` |
+
 ## License
 
 MIT
