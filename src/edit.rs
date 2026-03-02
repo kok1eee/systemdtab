@@ -67,9 +67,12 @@ pub fn run(name: &str) -> Result<()> {
             let restored = format!("{}\n{}", missing_text.join("\n"), edited_content);
             fs::write(&service_path, &restored)
                 .with_context(|| format!("Failed to write {}", service_path.display()))?;
+            eprintln!("Warning: Restored missing sdtab metadata:");
             for line in &missing_text {
-                eprintln!("Restored: {}", line);
+                eprintln!("  {}", line);
             }
+            eprintln!("  These are required for sdtab list/export to work correctly.");
+            eprintln!("  To permanently remove this unit: sdtab remove {}", name);
         }
     }
 
