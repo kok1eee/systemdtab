@@ -63,11 +63,23 @@ pub struct AddOptions {
 }
 
 pub fn run(opts: AddOptions) -> Result<()> {
+    warn_cgroups_v2(&opts);
     let parsed = cron::parse(&opts.schedule)?;
     if parsed.is_service {
         run_service(opts)
     } else {
         run_timer(opts, parsed)
+    }
+}
+
+fn warn_cgroups_v2(opts: &AddOptions) {
+    let needs_v2 = opts.memory_max.is_some()
+        || opts.cpu_quota.is_some()
+        || opts.io_weight.is_some();
+    if needs_v2 && !Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
+        eprintln!("Warning: --memory-max, --cpu-quota, --io-weight require cgroups v2.");
+        eprintln!("  cgroups v2 is not available on this system.");
+        eprintln!("  Resource limits may be silently ignored.");
     }
 }
 

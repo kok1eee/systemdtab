@@ -58,10 +58,12 @@ cp target/release/sdtab ~/.local/bin/
 
 | オプション | 必要バージョン | 備考 |
 |-----------|--------------|------|
-| `--memory-max` | systemd 244+（cgroups v2） | `MemoryMax=` ディレクティブ |
-| `--cpu-quota` | systemd 244+（cgroups v2） | `CPUQuota=` ディレクティブ |
-| `--io-weight` | systemd 247+（cgroups v2） | `IOWeight=` ディレクティブ |
+| `--memory-max` | systemd 244+ かつ cgroups v2 | `MemoryMax=` ディレクティブ |
+| `--cpu-quota` | systemd 244+ かつ cgroups v2 | `CPUQuota=` ディレクティブ |
+| `--io-weight` | systemd 247+ かつ cgroups v2 | `IOWeight=` ディレクティブ |
 | `--log-level-max` | systemd 239+ | `LogLevelMax=` ディレクティブ |
+
+> cgroups v2 はカーネルの機能であり、systemd のバージョンだけでは決まりません。確認: `test -f /sys/fs/cgroup/cgroup.controllers && echo v2 || echo v1`
 
 > **Amazon Linux 2**（systemd 219）は**非対応**です。cgroups v2 および必要なディレクティブが不足しています。**Amazon Linux 2023**（systemd 252）以降を使用してください。
 

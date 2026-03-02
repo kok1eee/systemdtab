@@ -58,10 +58,12 @@ Some options require newer systemd versions:
 
 | Option | Requires | Notes |
 |--------|----------|-------|
-| `--memory-max` | systemd 244+ (cgroups v2) | `MemoryMax=` directive |
-| `--cpu-quota` | systemd 244+ (cgroups v2) | `CPUQuota=` directive |
-| `--io-weight` | systemd 247+ (cgroups v2) | `IOWeight=` directive |
+| `--memory-max` | systemd 244+ and cgroups v2 | `MemoryMax=` directive |
+| `--cpu-quota` | systemd 244+ and cgroups v2 | `CPUQuota=` directive |
+| `--io-weight` | systemd 247+ and cgroups v2 | `IOWeight=` directive |
 | `--log-level-max` | systemd 239+ | `LogLevelMax=` directive |
+
+> cgroups v2 is a kernel feature, not just a systemd version. Check with: `test -f /sys/fs/cgroup/cgroup.controllers && echo v2 || echo v1`
 
 > **Amazon Linux 2** (systemd 219) is **not supported** — it lacks cgroups v2 and several required directives. Use **Amazon Linux 2023** (systemd 252) or newer.
 
