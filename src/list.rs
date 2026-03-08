@@ -17,6 +17,15 @@ struct Entry {
     description: Option<String>,
     #[serde(skip)]
     sort_key: u64, // datetime sort key for timers, u64::MAX for services
+    #[serde(skip)]
+    section: Section,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Section {
+    Timer,    // active timers (sorted by next run)
+    Service,  // always-running services
+    Disabled, // stopped timers/services
 }
 
 pub fn run(json: bool, sort: SortOrder) -> Result<()> {
@@ -34,22 +43,34 @@ pub fn run(json: bool, sort: SortOrder) -> Result<()> {
     let mut entries: Vec<Entry> = Vec::new();
 
     for unit in &units {
-        let (type_str, schedule, status, sort_key) = match unit.unit_type {
+        let (type_str, schedule, status, sort_key, section) = match unit.unit_type {
             parse_unit::UnitType::Service => {
                 let service_unit = unit::service_filename(&unit.name);
                 let active_state = systemctl::show_property(&service_unit, "ActiveState")
                     .unwrap_or_else(|_| "unknown".to_string());
-                ("service", "@service".to_string(), active_state, u64::MAX)
+                let section = if active_state == "active" {
+                    Section::Service
+                } else {
+                    Section::Disabled
+                };
+                ("service", "@service".to_string(), active_state, u64::MAX, section)
             }
             parse_unit::UnitType::Timer => {
                 let timer_unit = unit::timer_filename(&unit.name);
+                let timer_active = systemctl::show_property(&timer_unit, "ActiveState")
+                    .unwrap_or_else(|_| "unknown".to_string());
                 let next_run_raw =
                     systemctl::show_property(&timer_unit, "NextElapseUSecRealtime")
                         .unwrap_or_else(|_| "?".to_string());
                 let next_run = format_next_run(&next_run_raw);
                 let schedule = unit.cron_expr.as_deref().unwrap_or("?").to_string();
                 let epoch = parse_datetime_sort_key(&next_run_raw);
-                ("timer", schedule, next_run, epoch)
+                let section = if timer_active != "active" {
+                    Section::Disabled
+                } else {
+                    Section::Timer
+                };
+                ("timer", schedule, next_run, epoch, section)
             }
         };
 
@@ -68,19 +89,24 @@ pub fn run(json: bool, sort: SortOrder) -> Result<()> {
             status,
             description,
             sort_key,
+            section,
         });
     }
 
-    // Sort
+    // Sort: section first (Timer -> Service -> Disabled), then within section
     match sort {
         SortOrder::Time => {
-            // Timers by next run time, then services at the end
             entries.sort_by(|a, b| {
-                a.sort_key.cmp(&b.sort_key).then(a.name.cmp(&b.name))
+                a.section
+                    .cmp(&b.section)
+                    .then(a.sort_key.cmp(&b.sort_key))
+                    .then(a.name.cmp(&b.name))
             });
         }
         SortOrder::Name => {
-            entries.sort_by(|a, b| a.name.cmp(&b.name));
+            entries.sort_by(|a, b| {
+                a.section.cmp(&b.section).then(a.name.cmp(&b.name))
+            });
         }
     }
 
@@ -106,16 +132,26 @@ fn truncate(s: &str, max: usize) -> String {
 
 fn format_status(status: &str, use_color: bool) -> String {
     let (marker, color_code) = match status {
-        "active" => ("●", "\x1b[32m"),   // green
-        "failed" => ("●", "\x1b[31m"),   // red
-        "inactive" => ("○", "\x1b[33m"), // yellow
-        _ => ("○", "\x1b[90m"),          // gray
+        "active" => ("●", "\x1b[32m"),    // green
+        "failed" => ("●", "\x1b[31m"),    // red
+        "inactive" => ("○", "\x1b[33m"),  // yellow
+        "disabled" => ("○", "\x1b[90m"),  // gray
+        _ => ("○", "\x1b[90m"),           // gray
     };
 
     if use_color {
         format!("{color_code}{marker}\x1b[0m {status}")
     } else {
         format!("{marker} {status}")
+    }
+}
+
+fn print_section_header(label: &str, _width: usize, use_color: bool) {
+    let dashes = "─".repeat(3);
+    if use_color {
+        println!("\x1b[90m{dashes} {label} {dashes}\x1b[0m");
+    } else {
+        println!("{dashes} {label} {dashes}");
     }
 }
 
@@ -150,9 +186,33 @@ fn print_table(entries: &[Entry]) {
         cmd_w = cmd_width,
     );
 
+    let total_width = name_width + type_width + sched_width + cmd_width + 8 + 10; // columns + gaps + STATUS
+    let mut current_section: Option<Section> = None;
+
     for entry in entries {
+        // Section separator
+        if current_section != Some(entry.section) {
+            if current_section.is_some() {
+                println!();
+            }
+            match entry.section {
+                Section::Timer => {} // no header for first section
+                Section::Service => {
+                    print_section_header("Services", total_width, use_color);
+                }
+                Section::Disabled => {
+                    print_section_header("Disabled", total_width, use_color);
+                }
+            }
+            current_section = Some(entry.section);
+        }
+
         let cmd = truncate(&entry.command, cmd_max);
-        let status = format_status(&entry.status, use_color);
+        let status = if entry.section == Section::Disabled {
+            format_status("disabled", use_color)
+        } else {
+            format_status(&entry.status, use_color)
+        };
         println!(
             "{:<name_w$}  {:<type_w$}  {:<sched_w$}  {:<cmd_w$}  {}",
             entry.name,
