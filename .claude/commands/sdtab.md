@@ -10,6 +10,14 @@ sdtab CLI を使って systemd timer と常駐サービスを管理します。
 
 - `sdtab` がインストール済み（`cargo install --path .` または `cp target/release/sdtab /usr/local/bin/`）
 - `sdtab init` 実行済み
+- ジャーナル永続化設定済み（`journalctl --user -u sdtab-<name>` でログ確認可能）
+
+## 運用方針
+
+- **start.sh は使わない** — ExecStart に直接コマンドを書く（`uv run python main.py` 等）
+- **ログは journald に任せる** — Python 側のファイルログは不要。stdout/stderr に出力すれば journald が永続化・ローテーションを管理
+- **エラー通知は OnFailure= に任せる** — Python 側の Slack 通知コードは不要
+- **環境変数は EnvironmentFile=** — `source .env` の代わりに systemd ネイティブ機能を使う
 
 ## 引数
 
