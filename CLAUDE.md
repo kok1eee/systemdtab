@@ -9,7 +9,7 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `sdtab init [--slack-webhook URL] [--slack-mention USER_ID]` | linger 有効化 + ディレクトリ作成 + Claude Code スキルインストール + Slack通知設定 |
 | `sdtab add "<schedule>" "<command>" [--dry-run]` | タイマー追加 |
 | `sdtab add "@service" "<command>" [--dry-run]` | 常駐サービス追加 |
-| `sdtab list [--json]` | 管理中タイマー・サービス一覧（色付き●/○ステータス、descriptionサブライン表示） |
+| `sdtab list [--json] [--sort time\|name]` | 管理中タイマー・サービス一覧（色付き●/○ステータス、descriptionサブライン表示） |
 | `sdtab status <name>` | 詳細ステータス表示 |
 | `sdtab edit <name>` | $EDITOR でユニットファイル編集 |
 | `sdtab logs <name> [-f] [-n N] [-p PRIO]` | ログ表示（journalctl） |
