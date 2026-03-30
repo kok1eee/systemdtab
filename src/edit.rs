@@ -80,10 +80,41 @@ pub fn run(name: &str) -> Result<()> {
     systemctl::daemon_reload()?;
     println!("Reloaded systemd user daemon.");
 
-    // For services (not timers), suggest restart
-    if !is_timer {
+    if is_timer {
+        // Touch the Persistent= stamp file to prevent re-execution of past schedules.
+        // Without this, changing OnCalendar causes systemd to treat the new time
+        // as a missed execution and fire immediately.
+        touch_timer_stamp(name);
+    } else {
         println!("Hint: run `sdtab restart {}` to apply changes.", name);
     }
 
     Ok(())
+}
+
+/// Touch the systemd timer stamp file to mark "last triggered = now".
+/// This prevents Persistent=true from re-firing after a schedule change.
+fn touch_timer_stamp(name: &str) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let stamp_file = Path::new(&home)
+        .join(".local/share/systemd/timers")
+        .join(format!("stamp-{}", unit::timer_filename(name)));
+
+    if stamp_file.exists() {
+        // Open and close the file with write to update mtime
+        match fs::OpenOptions::new().write(true).open(&stamp_file) {
+            Ok(f) => {
+                // Set mtime to now via file metadata
+                let now = std::time::SystemTime::now();
+                if let Err(e) = f.set_modified(now) {
+                    eprintln!("Warning: failed to update stamp file mtime: {}", e);
+                } else {
+                    println!("Updated timer stamp to prevent Persistent= re-execution.");
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to open stamp file: {}", e);
+            }
+        }
+    }
 }
