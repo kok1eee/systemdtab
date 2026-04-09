@@ -40,6 +40,9 @@ pub struct ParsedUnit {
     pub random_delay: Option<String>,
     pub env: Vec<String>,
     pub no_notify: bool,
+    /// Template version the service file was generated with.
+    /// Defaults to 1 when `# sdtab:template_version=` is missing (pre-versioning units).
+    pub template_version: u32,
 }
 
 // Note: OnFailure= line is also parsed but not stored as a separate field.
@@ -140,6 +143,8 @@ pub fn parse_service_file(
     let mut log_level_max = None;
     let mut env = Vec::new();
     let mut no_notify = false;
+    // Units without `# sdtab:template_version=` are pre-versioning (implicit v1).
+    let mut template_version: u32 = 1;
 
     for line in service_content.lines() {
         let line = line.trim();
@@ -161,6 +166,11 @@ pub fn parse_service_file(
         }
         if line == "# sdtab:no-notify=true" {
             no_notify = true;
+        }
+        if let Some(val) = line.strip_prefix("# sdtab:template_version=") {
+            if let Ok(v) = val.parse::<u32>() {
+                template_version = v;
+            }
         }
 
         // Unit file directives
@@ -257,6 +267,7 @@ pub fn parse_service_file(
         random_delay,
         env,
         no_notify,
+        template_version,
     }
 }
 
@@ -484,6 +495,44 @@ RestartSec=5
 
         let parsed = parse_service_file("bot", service, None, "");
         assert!(!parsed.no_notify);
+    }
+
+    #[test]
+    fn parse_template_version_missing_defaults_to_1() {
+        let service = "\
+# sdtab:type=timer
+# sdtab:cron=0 9 * * *
+[Unit]
+Description=[sdtab] task: test
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/echo test
+WorkingDirectory=/home/user
+";
+
+        let parsed = parse_service_file("task", service, None, "");
+        assert_eq!(parsed.template_version, 1);
+    }
+
+    #[test]
+    fn parse_template_version_v2() {
+        let service = "\
+# sdtab:type=timer
+# sdtab:template_version=2
+# sdtab:cron=0 9 * * *
+[Unit]
+Description=[sdtab] task: test
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/echo test
+WorkingDirectory=/home/user
+SyslogIdentifier=sdtab-task
+";
+
+        let parsed = parse_service_file("task", service, None, "");
+        assert_eq!(parsed.template_version, 2);
     }
 
     #[test]

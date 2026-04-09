@@ -510,6 +510,7 @@ workdir = "/home/user/app"
             random_delay: None,
             env: vec![],
             no_notify: false,
+            template_version: unit::TEMPLATE_VERSION,
         }
     }
 
@@ -683,6 +684,7 @@ workdir = "/home/user/app"
             random_delay: Some("5m".to_string()),
             env: vec!["FOO=bar".to_string()],
             no_notify: true,
+            template_version: unit::TEMPLATE_VERSION,
         }
     }
 
@@ -706,6 +708,7 @@ workdir = "/home/user/app"
             random_delay: None,
             env: vec!["FOO=bar".to_string()],
             no_notify: true,
+            template_version: unit::TEMPLATE_VERSION,
         }
     }
 
