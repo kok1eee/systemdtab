@@ -60,6 +60,56 @@ sdtab add "<schedule>" "<command>" --name <name> --workdir <workdir>
 
 追加後、`sdtab list` で結果を表示。
 
+#### インラインモード（推奨パターン）
+
+`sdtab add` はコマンド文字列をインラインで渡す設計。**`cd X && cmd` を連結せず、`--workdir` でディレクトリを分離するのが綺麗**。sdtab が内部で `ExecStart` の実行ファイルをフルパス解決してくれるので、`git` や `uv` のような PATH 依存コマンドもそのまま書ける。
+
+```bash
+# 悪い例: cd を command 欄に埋め込む
+sdtab add "@weekly" "cd /home/ec2-user/dotfiles && git pull --ff-only" --name dotfiles-pull
+
+# 良い例: --workdir で分離
+sdtab add "@weekly" "git pull --ff-only" \
+  --workdir "/home/ec2-user/dotfiles" \
+  --name "dotfiles-pull" \
+  --description "Weekly pull of dotfiles"
+```
+
+後者の方が:
+- 生成される unit ファイルが綺麗（`WorkingDirectory=` が独立）
+- `sdtab status` / `list` で command 欄に純粋なコマンドだけが表示される
+- `--dry-run` で読みやすい
+
+複雑なロジック（条件分岐、パイプ、複数コマンド）が必要になったら、初めてシェルスクリプトに抽出する。それまではインライン + `--workdir` で十分。
+
+#### 実行前に必ず `--dry-run`
+
+いきなり本番 add せず、まず `--dry-run` で生成される unit ファイルを確認する:
+
+```bash
+sdtab add "@weekly" "git pull --ff-only" \
+  --workdir "/home/ec2-user/dotfiles" \
+  --name "dotfiles-pull" \
+  --dry-run
+```
+
+`ExecStart=`、`WorkingDirectory=`、`OnCalendar=` が想定通りか確認してから `--dry-run` を外して実行。
+
+### $ARGUMENTS が "logs" で始まる場合
+
+```bash
+sdtab logs <name>          # 直近ログ（systemd lifecycle + 子プロセス stdout）
+sdtab logs <name> -f       # follow
+sdtab logs <name> -n 50    # 直近50行
+sdtab logs <name> -p err   # エラー以上のみ
+```
+
+生成される unit には `SyslogIdentifier=sdtab-<name>` が自動設定されているので、`sdtab logs` は systemd の Starting/Finished に加えて、実行中の子プロセスの stdout/stderr（例: `git pull` の "Already up to date." 等）も拾える。
+
+運用ルール:
+- **失敗調査**: `sdtab logs <name>` → 該当時刻の Finished 行と子プロセスの出力を確認
+- **ファイルログは廃止**: 旧プロジェクトは `/tmp/*.log` を見ていたが、sdtab 管理下は journal に一本化されている
+
 ### $ARGUMENTS が "remove" で始まる場合
 
 ```bash

@@ -59,6 +59,7 @@ pub fn generate_service(config: &UnitConfig) -> String {
          Type=oneshot\n\
          ExecStart={command}\n\
          WorkingDirectory={workdir}\n\
+         SyslogIdentifier=sdtab-{name}\n\
          {global_env}\
          {env_line}\
          {resource_lines}",
@@ -118,6 +119,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          Type=simple\n\
          ExecStart={command}\n\
          WorkingDirectory={workdir}\n\
+         SyslogIdentifier=sdtab-{name}\n\
          Restart={restart}\n\
          RestartSec=5\n\
          {global_env}\
@@ -308,6 +310,8 @@ mod tests {
         assert!(service.contains("ExecStart=uv run ./report.py"));
         assert!(service.contains("WorkingDirectory=/home/user/project"));
         assert!(service.contains("Type=oneshot"));
+        // SyslogIdentifier enables `journalctl --user-unit` to capture child stdout
+        assert!(service.contains("SyslogIdentifier=sdtab-report"));
     }
 
     #[test]
@@ -371,6 +375,8 @@ mod tests {
         assert!(service.contains("RestartSec=5"));
         assert!(service.contains("EnvironmentFile=/home/user/.config/bot/.env"));
         assert!(service.contains("WantedBy=default.target"));
+        // SyslogIdentifier enables `journalctl --user-unit` to capture child stdout
+        assert!(service.contains("SyslogIdentifier=sdtab-agent"));
     }
 
     #[test]
