@@ -84,10 +84,17 @@ enum Commands {
         #[arg(short, long)]
         priority: Option<String>,
     },
-    /// Restart a timer or service
+    /// Restart one or more services
+    ///
+    /// Supports multiple names and glob patterns (e.g. `hikken-*`).
+    /// Timers cannot be restarted; only daemon services are eligible.
     Restart {
-        /// Timer/service name to restart
-        name: String,
+        /// Service names or glob patterns. Omit when using --all.
+        #[arg(required_unless_present = "all")]
+        names: Vec<String>,
+        /// Restart all sdtab-managed services (timers excluded)
+        #[arg(long)]
+        all: bool,
     },
     /// Show detailed status of a timer or service
     Status {
@@ -153,7 +160,7 @@ fn run() -> Result<()> {
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
         Commands::Logs { name, follow, lines, priority } => logs::run(&name, follow, lines, priority)?,
-        Commands::Restart { name } => restart::run(&name)?,
+        Commands::Restart { names, all } => restart::run(&names, all)?,
         Commands::Status { name } => status::run(&name)?,
         Commands::Enable { name } => enable::run(&name)?,
         Commands::Disable { name } => disable::run(&name)?,
