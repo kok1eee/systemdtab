@@ -109,13 +109,17 @@ sdtab apply Sdtabfile.toml
 | `sdtab list [--json] [--sort time\|name]` | List all managed timers and services (default: sorted by next run time) |
 | `sdtab status <name>` | Show detailed status with next 5 run times |
 | `sdtab edit <name>` | Edit unit file with $EDITOR (see caveat below) |
-| `sdtab logs <name> [-f] [-n N]` | View logs (journalctl) |
+| `sdtab logs <name> [-f] [-n N] [-p PRIO] [--since SPEC]` | View logs (journalctl) |
+| `sdtab logs --all [--failed] [--since SPEC]` | Aggregate logs across all sdtab units (or only failed ones) |
 | `sdtab restart <name>` | Restart a service |
+| `sdtab run <name>` | Trigger a unit once manually (ignores timer schedule) |
 | `sdtab enable <name>` | Enable a timer or service |
 | `sdtab disable <name>` | Disable (keep files) |
 | `sdtab remove <name>` | Stop, disable, and remove unit files |
 | `sdtab export [-o <file>]` | Export config as TOML |
 | `sdtab apply <file> [--prune] [--dry-run]` | Apply config from TOML |
+| `sdtab doctor` | Run health checks (linger, unit dir, systemctl, config, failed units) |
+| `sdtab completions {bash\|zsh\|fish}` | Print shell completion script (dynamic unit-name completion) |
 
 > `sdtab remove` stops and disables the unit before deleting files. `sdtab apply --prune` only removes units with the `sdtab-` prefix — manually created systemd units are never touched.
 
@@ -219,6 +223,49 @@ env_file = "/home/user/.env"
 ```
 
 Use `sdtab apply Sdtabfile.toml` to recreate all units from this file. Add `--prune` to remove sdtab-managed units not in the file.
+
+## Shell Completion
+
+`sdtab completions <shell>` prints a completion script for bash / zsh / fish. In addition to subcommands and flags, it provides **dynamic completion of managed unit names** (e.g. `sdtab logs <TAB>`, `sdtab edit <TAB>`).
+
+No extra packages are required — it relies only on each shell's built-in completion system.
+
+### zsh (default on macOS)
+
+```bash
+mkdir -p ~/.zsh/completions
+sdtab completions zsh > ~/.zsh/completions/_sdtab
+
+# Add to ~/.zshrc if not already configured
+cat >> ~/.zshrc <<'EOF'
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+EOF
+
+exec zsh
+```
+
+### bash
+
+```bash
+sdtab completions bash > ~/.sdtab-completion.bash
+echo 'source ~/.sdtab-completion.bash' >> ~/.bashrc
+exec bash
+```
+
+If you use the `bash-completion` package, you can instead drop it into the completions directory:
+
+```bash
+sdtab completions bash > ~/.local/share/bash-completion/completions/sdtab
+```
+
+### fish
+
+```bash
+sdtab completions fish > ~/.config/fish/completions/sdtab.fish
+```
+
+Internally the completion scripts call a hidden subcommand `sdtab __names` to retrieve the list of managed units (you never need to invoke it directly).
 
 ## How It Works
 

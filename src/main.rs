@@ -1,8 +1,10 @@
 mod add;
 mod apply;
+mod completions;
 mod config;
 mod cron;
 mod disable;
+mod doctor;
 mod edit;
 mod enable;
 mod export;
@@ -12,6 +14,7 @@ mod logs;
 mod parse_unit;
 mod remove;
 mod restart;
+mod run;
 mod sdtabfile;
 mod status;
 mod systemctl;
@@ -71,9 +74,12 @@ enum Commands {
         name: String,
     },
     /// Show logs for a timer or service
+    ///
+    /// Pass a unit name for single-unit logs, or --all / --failed to aggregate
+    /// across all sdtab-managed units.
     Logs {
-        /// Timer/service name
-        name: String,
+        /// Timer/service name (omit together with --all or --failed)
+        name: Option<String>,
         /// Follow log output (tail -f)
         #[arg(short, long)]
         follow: bool,
@@ -83,6 +89,15 @@ enum Commands {
         /// Filter by priority (emerg/alert/crit/err/warning/notice/info/debug)
         #[arg(short, long)]
         priority: Option<String>,
+        /// Aggregate logs across all sdtab-managed units
+        #[arg(long)]
+        all: bool,
+        /// Aggregate logs only for units currently in 'failed' state (implies --all)
+        #[arg(long)]
+        failed: bool,
+        /// Show entries newer than the given time spec (e.g. "1 hour ago", "2026-04-20")
+        #[arg(long)]
+        since: Option<String>,
     },
     /// Restart one or more services
     ///
@@ -95,6 +110,11 @@ enum Commands {
         /// Restart all sdtab-managed services (timers excluded)
         #[arg(long)]
         all: bool,
+    },
+    /// Trigger a unit once manually (ignores timer schedule)
+    Run {
+        /// Timer/service name to run
+        name: String,
     },
     /// Show detailed status of a timer or service
     Status {
@@ -141,6 +161,19 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Run health checks (linger, unit dir, systemctl, config, failed units)
+    Doctor,
+    /// Generate shell completion script (bash/zsh/fish)
+    ///
+    /// Example: sdtab completions zsh > ~/.zsh/completions/_sdtab
+    Completions {
+        /// Target shell
+        #[arg(value_enum)]
+        shell: completions::Shell,
+    },
+    /// Print managed unit names (one per line), used by shell completion
+    #[command(name = "__names", hide = true)]
+    Names,
 }
 
 fn main() {
@@ -159,14 +192,20 @@ fn run() -> Result<()> {
         Commands::List { json, sort } => list::run(json, sort)?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,
-        Commands::Logs { name, follow, lines, priority } => logs::run(&name, follow, lines, priority)?,
+        Commands::Logs { name, follow, lines, priority, all, failed, since } => {
+            logs::run(name.as_deref(), follow, lines, priority, all, failed, since.as_deref())?
+        }
         Commands::Restart { names, all } => restart::run(&names, all)?,
+        Commands::Run { name } => run::run(&name)?,
         Commands::Status { name } => status::run(&name)?,
         Commands::Enable { name } => enable::run(&name)?,
         Commands::Disable { name } => disable::run(&name)?,
         Commands::Export { output } => export::run(output.as_deref())?,
         Commands::Apply { file, prune, dry_run } => apply::run(&file, prune, dry_run)?,
         Commands::Upgrade { name, dry_run } => upgrade::run(name.as_deref(), dry_run)?,
+        Commands::Doctor => doctor::run()?,
+        Commands::Completions { shell } => completions::run(shell)?,
+        Commands::Names => completions::print_names()?,
     }
 
     Ok(())

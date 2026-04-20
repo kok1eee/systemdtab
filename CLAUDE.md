@@ -12,13 +12,17 @@ systemd timer と常駐サービスを crontab のように簡単に管理する
 | `sdtab list [--json] [--sort time\|name]` | 管理中タイマー・サービス一覧（色付き●/○ステータス、descriptionサブライン表示） |
 | `sdtab status <name>` | 詳細ステータス表示 |
 | `sdtab edit <name>` | $EDITOR でユニットファイル編集 |
-| `sdtab logs <name> [-f] [-n N] [-p PRIO]` | ログ表示（journalctl） |
+| `sdtab logs <name> [-f] [-n N] [-p PRIO] [--since SPEC]` | ログ表示（journalctl） |
+| `sdtab logs --all [--failed] [--since SPEC]` | 全 sdtab ユニットのログを横断表示（`--failed` で failed のみ） |
 | `sdtab restart <name>` | サービス再起動（`@service`のみ） |
+| `sdtab run <name>` | ユニットを手動で即時実行（タイマーはスケジュールそのまま） |
 | `sdtab enable <name>` | タイマー・サービス有効化 |
 | `sdtab disable <name>` | タイマー・サービス一時停止（ファイル保持） |
 | `sdtab remove <name>` | タイマー・サービス削除 |
 | `sdtab export [-o <file>]` | 現在の設定を TOML で出力 |
 | `sdtab apply <file> [--prune] [--dry-run]` | TOML から一括反映 |
+| `sdtab doctor` | 健全性チェック（linger / unit_dir / systemctl / config / failed 状態ユニット） |
+| `sdtab completions {bash\|zsh\|fish}` | シェル補完スクリプト出力（ユニット名は動的補完） |
 
 ### スケジュール構文
 
@@ -101,7 +105,11 @@ src/
 ├── restart.rs      # sdtab restart
 ├── status.rs       # sdtab status
 ├── enable.rs       # sdtab enable
-└── disable.rs      # sdtab disable
+├── disable.rs      # sdtab disable
+├── run.rs          # sdtab run（手動即時実行）
+├── doctor.rs       # sdtab doctor（健全性チェック）
+├── completions.rs  # sdtab completions（bash/zsh/fish スクリプト生成 + 隠し __names）
+└── completions/    # 各シェル補完スクリプト本体（include_str! で埋め込み）
 ```
 
 ## 設計方針

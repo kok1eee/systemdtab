@@ -109,13 +109,17 @@ sdtab apply Sdtabfile.toml
 | `sdtab list [--json] [--sort time\|name]` | 管理中のタイマー・サービス一覧（デフォルト: 次回実行時刻順） |
 | `sdtab status <name>` | 詳細ステータス表示（次回5回分の実行時刻付き） |
 | `sdtab edit <name>` | $EDITOR でユニットファイルを編集（下記注意参照） |
-| `sdtab logs <name> [-f] [-n N]` | ログ表示（journalctl） |
+| `sdtab logs <name> [-f] [-n N] [-p PRIO] [--since SPEC]` | ログ表示（journalctl） |
+| `sdtab logs --all [--failed] [--since SPEC]` | 全 sdtab ユニットのログを横断表示（`--failed` で failed のみ） |
 | `sdtab restart <name>` | サービスを再起動 |
+| `sdtab run <name>` | ユニットを手動で即時実行（タイマーのスケジュールはそのまま） |
 | `sdtab enable <name>` | タイマー・サービスを有効化 |
 | `sdtab disable <name>` | 一時停止（ファイルは保持） |
 | `sdtab remove <name>` | 停止・無効化してユニットファイルを削除 |
 | `sdtab export [-o <file>]` | 設定を TOML でエクスポート |
 | `sdtab apply <file> [--prune] [--dry-run]` | TOML から一括適用 |
+| `sdtab doctor` | 健全性チェック（linger / ユニットディレクトリ / systemctl / config / failed ユニット） |
+| `sdtab completions {bash\|zsh\|fish}` | シェル補完スクリプト出力（ユニット名の動的補完付き） |
 
 > `sdtab remove` は実行中のユニットを停止・無効化してからファイルを削除します。`sdtab apply --prune` は `sdtab-` プレフィックス付きのユニットのみを削除対象とし、手動で作成した systemd ユニットには影響しません。
 
@@ -219,6 +223,49 @@ env_file = "/home/user/.env"
 ```
 
 `sdtab apply Sdtabfile.toml` でファイルからユニットを一括作成できます。`--prune` を付けると sdtab 管理下のユニットでファイルにないものを削除します。
+
+## シェル補完
+
+`sdtab completions <shell>` で bash / zsh / fish 用の補完スクリプトを出力します。サブコマンド・フラグに加えて、**管理中のユニット名を動的に補完**します（`sdtab logs <TAB>`、`sdtab edit <TAB>` など）。
+
+追加プログラムは不要で、各シェルの組込み補完機構のみを使います。
+
+### zsh（macOS デフォルト）
+
+```bash
+mkdir -p ~/.zsh/completions
+sdtab completions zsh > ~/.zsh/completions/_sdtab
+
+# ~/.zshrc に未設定なら追加
+cat >> ~/.zshrc <<'EOF'
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+EOF
+
+exec zsh
+```
+
+### bash
+
+```bash
+sdtab completions bash > ~/.sdtab-completion.bash
+echo 'source ~/.sdtab-completion.bash' >> ~/.bashrc
+exec bash
+```
+
+`bash-completion` パッケージを使っている場合は代わりに以下でも可：
+
+```bash
+sdtab completions bash > ~/.local/share/bash-completion/completions/sdtab
+```
+
+### fish
+
+```bash
+sdtab completions fish > ~/.config/fish/completions/sdtab.fish
+```
+
+補完スクリプト内部では `sdtab __names` という隠しサブコマンドを呼んでユニット名を取得します（通常ユーザーが直接叩く必要はありません）。
 
 ## 仕組み
 

@@ -43,6 +43,11 @@ pub fn restart(unit: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn start(unit: &str) -> Result<()> {
+    run(&["start", unit])?;
+    Ok(())
+}
+
 pub fn show_property(unit: &str, property: &str) -> Result<String> {
     let output = run(&["show", "-p", property, "--value", unit])?;
     Ok(output)
