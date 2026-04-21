@@ -14,7 +14,7 @@ use crate::init;
 /// - 2: adds `SyslogIdentifier=sdtab-<name>` so `journalctl --user-unit`
 ///   captures child process stdout on systems where journald fails to
 ///   attach user-unit metadata to child stream records.
-pub const TEMPLATE_VERSION: u32 = 2;
+pub const TEMPLATE_VERSION: u32 = 4;
 
 #[derive(Default)]
 pub struct UnitConfig {
@@ -132,6 +132,8 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          Description=[sdtab] {name}: {desc}\n\
          {on_failure_line}\
          After=network-online.target\n\
+         StartLimitIntervalSec=300\n\
+         StartLimitBurst=3\n\
          \n\
          [Service]\n\
          Type=simple\n\
@@ -140,6 +142,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          SyslogIdentifier=sdtab-{name}\n\
          Restart={restart}\n\
          RestartSec=5\n\
+         SuccessExitStatus=143 SIGTERM\n\
          {global_env}\
          {env_line}\
          {resource_lines}\
@@ -394,6 +397,12 @@ mod tests {
         assert!(service.contains("ExecStart=ambient-task-agent serve --port 3000"));
         assert!(service.contains("Restart=on-failure"));
         assert!(service.contains("RestartSec=5"));
+        // SIGTERM (143) on stop is not a failure — silences sdtab-notify on `restart`
+        assert!(service.contains("SuccessExitStatus=143 SIGTERM"));
+        // StartLimit: 5min window with 3 retries, then OnFailure fires (otherwise
+        // RestartSec=5 + default 10s window keeps unit in `activating` forever)
+        assert!(service.contains("StartLimitIntervalSec=300"));
+        assert!(service.contains("StartLimitBurst=3"));
         assert!(service.contains("EnvironmentFile=/home/user/.config/bot/.env"));
         assert!(service.contains("WantedBy=default.target"));
         // SyslogIdentifier enables `journalctl --user-unit` to capture child stdout

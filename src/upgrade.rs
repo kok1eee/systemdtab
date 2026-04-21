@@ -120,6 +120,8 @@ fn upgrade_unit(u: &parse_unit::ParsedUnit, dry_run: bool) -> Result<Vec<String>
 fn apply_migration(u: &parse_unit::ParsedUnit, target_version: u32, dry_run: bool) -> Result<Vec<String>> {
     match target_version {
         2 => migrate_v2_syslog_identifier(u, dry_run),
+        3 => migrate_v3_success_exit_status(u, dry_run),
+        4 => migrate_v4_start_limit(u, dry_run),
         _ => anyhow::bail!("no migration defined for template version {}", target_version),
     }
 }
@@ -138,6 +140,48 @@ fn migrate_v2_syslog_identifier(u: &parse_unit::ParsedUnit, dry_run: bool) -> Re
         write_dropin(&u.name, "v2-syslog-identifier.conf", &content)?;
     }
     Ok(vec![format!("drop-in: {}", directive)])
+}
+
+/// v3: add `SuccessExitStatus=143 SIGTERM` to daemon services so a graceful stop
+/// (SIGTERM during `sdtab restart`) is not reported as failure by `OnFailure=`.
+/// Cron-triggered timers run `Type=oneshot` and exit naturally — they don't
+/// receive SIGTERM, so we skip them.
+fn migrate_v3_success_exit_status(u: &parse_unit::ParsedUnit, dry_run: bool) -> Result<Vec<String>> {
+    if !matches!(u.unit_type, parse_unit::UnitType::Service) {
+        return Ok(vec!["skipped (timer — SIGTERM does not apply)".to_string()]);
+    }
+    let directive = "SuccessExitStatus=143 SIGTERM";
+    if !dry_run {
+        let content = format!(
+            "# Added by `sdtab upgrade` to reach template_version=3\n\
+             [Service]\n\
+             {directive}\n"
+        );
+        write_dropin(&u.name, "v3-success-exit-status.conf", &content)?;
+    }
+    Ok(vec![format!("drop-in: {}", directive)])
+}
+
+/// v4: add `StartLimitIntervalSec=300` + `StartLimitBurst=3` to daemon services.
+/// systemd default (10s/5) combined with sdtab's `RestartSec=5` means a
+/// continuously-failing service never accumulates 5 failures within the 10s
+/// window, so it stays in `activating` forever and `OnFailure=` is never
+/// triggered. With this drop-in: 3 failures within 5 minutes → `failed` →
+/// notification fires.
+fn migrate_v4_start_limit(u: &parse_unit::ParsedUnit, dry_run: bool) -> Result<Vec<String>> {
+    if !matches!(u.unit_type, parse_unit::UnitType::Service) {
+        return Ok(vec!["skipped (timer — StartLimit only matters for restart loops)".to_string()]);
+    }
+    let directives = "StartLimitIntervalSec=300\nStartLimitBurst=3";
+    if !dry_run {
+        let content = format!(
+            "# Added by `sdtab upgrade` to reach template_version=4\n\
+             [Unit]\n\
+             {directives}\n"
+        );
+        write_dropin(&u.name, "v4-start-limit.conf", &content)?;
+    }
+    Ok(vec!["drop-in: StartLimitIntervalSec=300 + StartLimitBurst=3".to_string()])
 }
 
 /// Write (or overwrite) a drop-in file for the given unit.
