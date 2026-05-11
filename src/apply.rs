@@ -265,7 +265,7 @@ fn build_timer_config(name: &str, entry: &TimerEntry) -> Result<unit::UnitConfig
     let resolved_command = init::resolve_command(&entry.command)?;
     let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
     let display_schedule = parsed.display.clone().unwrap_or_else(|| entry.schedule.clone());
-    let original_command = if resolved_command != entry.command {
+    let original_command = if resolved_command != entry.command || entry.env_from.is_some() {
         Some(entry.command.clone())
     } else {
         None
