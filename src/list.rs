@@ -28,8 +28,9 @@ struct Entry {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Section {
     Timer,    // active timers (sorted by next run)
-    Service,  // always-running services
-    Disabled, // stopped timers/services
+    Service,  // always-running services (active)
+    Inactive, // stopped but enabled for autostart
+    Disabled, // stopped and not enabled (truly disabled)
 }
 
 pub fn run(json: bool, sort: SortOrder) -> Result<()> {
@@ -54,6 +55,8 @@ pub fn run(json: bool, sort: SortOrder) -> Result<()> {
                     .unwrap_or_else(|_| "unknown".to_string());
                 let section = if active_state == "active" {
                     Section::Service
+                } else if systemctl::is_enabled(&service_unit) {
+                    Section::Inactive
                 } else {
                     Section::Disabled
                 };
@@ -69,10 +72,12 @@ pub fn run(json: bool, sort: SortOrder) -> Result<()> {
                 let next_run = format_next_run(&next_run_raw);
                 let schedule = unit.cron_expr.as_deref().unwrap_or("?").to_string();
                 let epoch = parse_datetime_sort_key(&next_run_raw);
-                let section = if timer_active != "active" {
-                    Section::Disabled
-                } else {
+                let section = if timer_active == "active" {
                     Section::Timer
+                } else if systemctl::is_enabled(&timer_unit) {
+                    Section::Inactive
+                } else {
+                    Section::Disabled
                 };
                 ("timer", schedule, next_run, epoch, section)
             }
@@ -217,6 +222,9 @@ fn print_table(entries: &[Entry]) {
                 Section::Service => {
                     print_section_header("Services", total_width, use_color);
                 }
+                Section::Inactive => {
+                    print_section_header("Inactive", total_width, use_color);
+                }
                 Section::Disabled => {
                     print_section_header("Disabled", total_width, use_color);
                 }
@@ -228,7 +236,7 @@ fn print_table(entries: &[Entry]) {
         let status = if entry.section == Section::Disabled {
             format_status("disabled", use_color)
         } else {
-            format_status(&entry.status, use_color)
+            format_status(&entry.status, use_color) // "active" / "inactive" / "failed" etc.
         };
         // Append [legacy] suffix to name so the user sees which units need upgrading.
         // Color it yellow (same palette as inactive) to make it visible but not alarming.

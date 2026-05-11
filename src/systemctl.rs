@@ -53,6 +53,16 @@ pub fn show_property(unit: &str, property: &str) -> Result<String> {
     Ok(output)
 }
 
+/// Returns true if the unit is enabled (or static) for autostart.
+pub fn is_enabled(unit: &str) -> bool {
+    Command::new("systemctl")
+        .arg("--user")
+        .args(["is-enabled", "--quiet", unit])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Get next N execution times for an OnCalendar expression using systemd-analyze.
 pub fn next_runs(on_calendar: &str, count: u32) -> Result<Vec<String>> {
     let output = Command::new("systemd-analyze")
