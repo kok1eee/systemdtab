@@ -25,6 +25,7 @@ pub fn run(output: Option<&str>) -> Result<()> {
                         workdir: unit.workdir,
                         description,
                         env_file: unit.env_file,
+                        env_from: unit.env_from,
                         memory_max: unit.memory_max,
                         cpu_quota: unit.cpu_quota,
                         io_weight: unit.io_weight,
@@ -48,6 +49,7 @@ pub fn run(output: Option<&str>) -> Result<()> {
                         description,
                         restart: unit.restart_policy,
                         env_file: unit.env_file,
+                        env_from: unit.env_from,
                         memory_max: unit.memory_max,
                         cpu_quota: unit.cpu_quota,
                         io_weight: unit.io_weight,
@@ -115,6 +117,7 @@ mod tests {
                 random_delay: None,
                 env: vec![],
                 no_notify: false,
+                env_from: None,
             },
         );
         let sdtabfile = Sdtabfile {

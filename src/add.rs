@@ -57,6 +57,9 @@ pub struct AddOptions {
     /// Disable failure notification for this unit
     #[arg(long)]
     pub no_notify: bool,
+    /// Wrap ExecStart with an env-injection tool (e.g. "ssmm")
+    #[arg(long)]
+    pub env_from: Option<String>,
     /// Preview generated unit files without creating them
     #[arg(long)]
     pub dry_run: bool,
@@ -110,7 +113,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
     let resolved_command = init::resolve_command(&opts.command)?;
     let description = opts.description.unwrap_or_else(|| opts.command.clone());
     let display_schedule = parsed.display.clone().unwrap_or_else(|| opts.schedule.clone());
-    let original_command = if resolved_command != opts.command {
+    let original_command = if resolved_command != opts.command || opts.env_from.is_some() {
         Some(opts.command)
     } else {
         None
@@ -140,6 +143,7 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         original_command,
         on_failure,
         no_notify,
+        env_from: opts.env_from,
     };
 
     let service_content = unit::generate_service(&config);
@@ -223,7 +227,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
     let workdir = resolve_workdir(opts.workdir)?;
     let resolved_command = init::resolve_command(&opts.command)?;
     let description = opts.description.unwrap_or_else(|| opts.command.clone());
-    let original_command = if resolved_command != opts.command {
+    let original_command = if resolved_command != opts.command || opts.env_from.is_some() {
         Some(opts.command)
     } else {
         None
@@ -252,6 +256,7 @@ fn run_service(opts: AddOptions) -> Result<()> {
         original_command,
         on_failure,
         no_notify,
+        env_from: opts.env_from,
     };
 
     let service_content = unit::generate_daemon_service(&config);

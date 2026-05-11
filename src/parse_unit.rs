@@ -40,6 +40,8 @@ pub struct ParsedUnit {
     pub random_delay: Option<String>,
     pub env: Vec<String>,
     pub no_notify: bool,
+    /// Env-injection tool wrapping ExecStart (e.g. "ssmm").
+    pub env_from: Option<String>,
     /// Template version the service file was generated with.
     /// Defaults to 1 when `# sdtab:template_version=` is missing (pre-versioning units).
     pub template_version: u32,
@@ -143,6 +145,7 @@ pub fn parse_service_file(
     let mut log_level_max = None;
     let mut env = Vec::new();
     let mut no_notify = false;
+    let mut env_from = None;
     // Units without `# sdtab:template_version=` are pre-versioning (implicit v1).
     let mut template_version: u32 = 1;
 
@@ -166,6 +169,9 @@ pub fn parse_service_file(
         }
         if line == "# sdtab:no-notify=true" {
             no_notify = true;
+        }
+        if let Some(val) = line.strip_prefix("# sdtab:env-from=") {
+            env_from = Some(val.to_string());
         }
         if let Some(val) = line.strip_prefix("# sdtab:template_version=") {
             if let Ok(v) = val.parse::<u32>() {
@@ -257,6 +263,7 @@ pub fn parse_service_file(
         cron_expr,
         restart_policy,
         env_file,
+        env_from,
         memory_max,
         cpu_quota,
         io_weight,

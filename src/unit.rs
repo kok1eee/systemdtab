@@ -22,6 +22,10 @@ pub struct UnitConfig {
     pub command: String,
     pub workdir: String,
     pub description: String,
+    /// Wrap ExecStart with an env-injection tool (e.g. "ssmm").
+    /// When set, `command` is the original command and ExecStart becomes
+    /// `<tool> exec -- <command>`.
+    pub env_from: Option<String>,
     pub cron_expr: Option<String>,
     pub schedule: Option<CronSchedule>,
     pub restart_policy: Option<String>,
@@ -48,6 +52,10 @@ pub fn generate_service(config: &UnitConfig) -> String {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
         None => String::new(),
     };
+    let env_from_meta = match &config.env_from {
+        Some(tool) => format!("# sdtab:env-from={}\n", tool),
+        None => String::new(),
+    };
     let no_notify_meta = if config.no_notify {
         "# sdtab:no-notify=true\n"
     } else {
@@ -61,11 +69,13 @@ pub fn generate_service(config: &UnitConfig) -> String {
         Some(path) => format!("EnvironmentFile={}\n", path),
         None => String::new(),
     };
+    let exec_start = build_exec_start(config);
     format!(
         "# sdtab:type=timer\n\
          # sdtab:template_version={template_version}\n\
          # sdtab:cron={cron}\n\
          {command_meta}\
+         {env_from_meta}\
          {no_notify_meta}\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
@@ -73,7 +83,7 @@ pub fn generate_service(config: &UnitConfig) -> String {
          \n\
          [Service]\n\
          Type=oneshot\n\
-         ExecStart={command}\n\
+         ExecStart={exec_start}\n\
          WorkingDirectory={workdir}\n\
          SyslogIdentifier=sdtab-{name}\n\
          {global_env}\
@@ -82,11 +92,12 @@ pub fn generate_service(config: &UnitConfig) -> String {
         template_version = TEMPLATE_VERSION,
         cron = cron,
         command_meta = command_meta,
+        env_from_meta = env_from_meta,
         no_notify_meta = no_notify_meta,
         name = config.name,
         desc = config.description,
         on_failure_line = on_failure_line,
-        command = config.command,
+        exec_start = exec_start,
         workdir = config.workdir,
         global_env = global_env,
         env_line = env_line,
@@ -102,6 +113,10 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
     let restart_meta = format!("# sdtab:restart={}\n", restart);
     let command_meta = match &config.original_command {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
+        None => String::new(),
+    };
+    let env_from_meta = match &config.env_from {
+        Some(tool) => format!("# sdtab:env-from={}\n", tool),
         None => String::new(),
     };
     let no_notify_meta = if config.no_notify {
@@ -121,12 +136,14 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
 
     let resource_lines = generate_service_options(config);
     let global_env = global_env_line();
+    let exec_start = build_exec_start(config);
 
     format!(
         "# sdtab:type=service\n\
          # sdtab:template_version={template_version}\n\
          {restart_meta}\
          {command_meta}\
+         {env_from_meta}\
          {no_notify_meta}\
          [Unit]\n\
          Description=[sdtab] {name}: {desc}\n\
@@ -137,7 +154,7 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          \n\
          [Service]\n\
          Type=simple\n\
-         ExecStart={command}\n\
+         ExecStart={exec_start}\n\
          WorkingDirectory={workdir}\n\
          SyslogIdentifier=sdtab-{name}\n\
          Restart={restart}\n\
@@ -151,11 +168,12 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         template_version = TEMPLATE_VERSION,
         restart_meta = restart_meta,
         command_meta = command_meta,
+        env_from_meta = env_from_meta,
         no_notify_meta = no_notify_meta,
         name = config.name,
         desc = config.description,
         on_failure_line = on_failure_line,
-        command = config.command,
+        exec_start = exec_start,
         workdir = config.workdir,
         restart = restart,
         global_env = global_env,
@@ -200,6 +218,20 @@ fn global_env_line() -> String {
     match init::global_env_path() {
         Ok(path) => format!("EnvironmentFile=-{}\n", path),
         Err(_) => String::new(),
+    }
+}
+
+/// Build the ExecStart value. When `env_from` is set, wrap the command with
+/// the specified tool's exec sub-command (currently only "ssmm" is supported).
+fn build_exec_start(config: &UnitConfig) -> String {
+    match config.env_from.as_deref() {
+        Some("ssmm") => {
+            let ssmm_bin = init::resolve_command("ssmm")
+                .map(|s| s.splitn(2, ' ').next().unwrap_or("ssmm").to_string())
+                .unwrap_or_else(|_| "ssmm".to_string());
+            format!("{} exec -- {}", ssmm_bin, config.command)
+        }
+        _ => config.command.clone(),
     }
 }
 
@@ -559,5 +591,69 @@ mod tests {
         let service = generate_daemon_service(&config);
         assert!(service.contains("OnFailure=sdtab-notify@%n.service"));
         assert!(!service.contains("# sdtab:no-notify=true"));
+    }
+
+    #[test]
+    fn test_env_from_ssmm_timer() {
+        let config = UnitConfig {
+            name: "media-1game".to_string(),
+            command: "uv run python main.py 1game --cron-mode".to_string(),
+            workdir: "/home/user/media_manager".to_string(),
+            description: "media-1game".to_string(),
+            cron_expr: Some("0 4 * * *".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 04:00:00".to_string()),
+                ..Default::default()
+            }),
+            env_from: Some("ssmm".to_string()),
+            original_command: Some("uv run python main.py 1game --cron-mode".to_string()),
+            ..Default::default()
+        };
+
+        let service = generate_service(&config);
+        // env-from metadata is embedded so parse_unit can round-trip
+        assert!(service.contains("# sdtab:env-from=ssmm"));
+        // ExecStart wraps the original command with ssmm exec --
+        assert!(service.contains("exec -- uv run python main.py 1game --cron-mode"));
+        // Original command is NOT the wrapped form
+        assert!(!service.contains("ExecStart=uv run python main.py 1game --cron-mode"));
+    }
+
+    #[test]
+    fn test_env_from_ssmm_daemon() {
+        let config = UnitConfig {
+            name: "myservice".to_string(),
+            command: "node server.js".to_string(),
+            workdir: "/home/user/app".to_string(),
+            description: "node server.js".to_string(),
+            env_from: Some("ssmm".to_string()),
+            original_command: Some("node server.js".to_string()),
+            ..Default::default()
+        };
+
+        let service = generate_daemon_service(&config);
+        assert!(service.contains("# sdtab:env-from=ssmm"));
+        assert!(service.contains("exec -- node server.js"));
+        assert!(!service.contains("ExecStart=node server.js"));
+    }
+
+    #[test]
+    fn test_env_from_none_no_metadata() {
+        let config = UnitConfig {
+            name: "plain".to_string(),
+            command: "echo hello".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "plain".to_string(),
+            cron_expr: Some("@daily".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 00:00:00".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let service = generate_service(&config);
+        assert!(!service.contains("# sdtab:env-from="));
+        assert!(service.contains("ExecStart=echo hello"));
     }
 }

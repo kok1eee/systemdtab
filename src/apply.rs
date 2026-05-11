@@ -293,13 +293,14 @@ fn build_timer_config(name: &str, entry: &TimerEntry) -> Result<unit::UnitConfig
         original_command,
         on_failure,
         no_notify: entry.no_notify,
+        env_from: entry.env_from.clone(),
     })
 }
 
 fn build_service_config(name: &str, entry: &ServiceEntry) -> Result<unit::UnitConfig> {
     let resolved_command = init::resolve_command(&entry.command)?;
     let description = entry.description.clone().unwrap_or_else(|| entry.command.clone());
-    let original_command = if resolved_command != entry.command {
+    let original_command = if resolved_command != entry.command || entry.env_from.is_some() {
         Some(entry.command.clone())
     } else {
         None
@@ -327,6 +328,7 @@ fn build_service_config(name: &str, entry: &ServiceEntry) -> Result<unit::UnitCo
         original_command,
         on_failure,
         no_notify: entry.no_notify,
+        env_from: entry.env_from.clone(),
     })
 }
 
@@ -362,6 +364,7 @@ fn timer_matches(current: &parse_unit::ParsedUnit, desired: &TimerEntry) -> bool
         && current.workdir == desired.workdir
         && sdtabfile::desc_matches(&current.description, &current.command, &desired.description)
         && current.env_file == desired.env_file
+        && current.env_from == desired.env_from
         && current.memory_max == desired.memory_max
         && current.cpu_quota == desired.cpu_quota
         && current.io_weight == desired.io_weight
@@ -382,6 +385,7 @@ fn service_matches(current: &parse_unit::ParsedUnit, desired: &ServiceEntry) -> 
         && sdtabfile::desc_matches(&current.description, &current.command, &desired.description)
         && current_restart == desired_restart
         && current.env_file == desired.env_file
+        && current.env_from == desired.env_from
         && current.memory_max == desired.memory_max
         && current.cpu_quota == desired.cpu_quota
         && current.io_weight == desired.io_weight
@@ -510,6 +514,7 @@ workdir = "/home/user/app"
             random_delay: None,
             env: vec![],
             no_notify: false,
+            env_from: None,
             template_version: unit::TEMPLATE_VERSION,
         }
     }
@@ -521,6 +526,7 @@ workdir = "/home/user/app"
             workdir: "/home/user".to_string(),
             description: None,
             env_file: None,
+            env_from: None,
             memory_max: None,
             cpu_quota: None,
             io_weight: None,
@@ -541,6 +547,7 @@ workdir = "/home/user/app"
             description: None,
             restart: None,
             env_file: None,
+            env_from: None,
             memory_max: None,
             cpu_quota: None,
             io_weight: None,
@@ -628,6 +635,7 @@ workdir = "/home/user/app"
             workdir: p.workdir.clone(),
             description: sdtabfile::description_if_different(&p.description, &p.command),
             env_file: p.env_file.clone(),
+            env_from: p.env_from.clone(),
             memory_max: p.memory_max.clone(),
             cpu_quota: p.cpu_quota.clone(),
             io_weight: p.io_weight.clone(),
@@ -648,6 +656,7 @@ workdir = "/home/user/app"
             description: sdtabfile::description_if_different(&p.description, &p.command),
             restart: p.restart_policy.clone(),
             env_file: p.env_file.clone(),
+            env_from: p.env_from.clone(),
             memory_max: p.memory_max.clone(),
             cpu_quota: p.cpu_quota.clone(),
             io_weight: p.io_weight.clone(),
@@ -684,6 +693,7 @@ workdir = "/home/user/app"
             random_delay: Some("5m".to_string()),
             env: vec!["FOO=bar".to_string()],
             no_notify: true,
+            env_from: None,
             template_version: unit::TEMPLATE_VERSION,
         }
     }
@@ -708,6 +718,7 @@ workdir = "/home/user/app"
             random_delay: None,
             env: vec!["FOO=bar".to_string()],
             no_notify: true,
+            env_from: None,
             template_version: unit::TEMPLATE_VERSION,
         }
     }
@@ -818,6 +829,7 @@ workdir = "/home/user/app"
             original_command: Some("echo hello".to_string()),
             on_failure: Some("sdtab-notify@%n.service".to_string()),
             no_notify: false,
+            env_from: None,
         }
     }
 
@@ -843,6 +855,7 @@ workdir = "/home/user/app"
             original_command: Some("node index.js".to_string()),
             on_failure: Some("sdtab-notify@%n.service".to_string()),
             no_notify: false,
+            env_from: None,
         }
     }
 

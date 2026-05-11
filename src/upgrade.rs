@@ -319,6 +319,7 @@ mod tests {
             random_delay: None,
             env: vec![],
             no_notify: false,
+            env_from: None,
             template_version: 1,
         };
         // We can't actually write files in this test without mocking init::unit_dir(),

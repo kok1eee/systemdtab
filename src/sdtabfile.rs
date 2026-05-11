@@ -19,6 +19,9 @@ pub struct TimerEntry {
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env_file: Option<String>,
+    /// Wrap ExecStart with an env-injection tool (e.g. "ssmm").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_max: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -54,6 +57,9 @@ pub struct ServiceEntry {
     pub restart: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env_file: Option<String>,
+    /// Wrap ExecStart with an env-injection tool (e.g. "ssmm").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_max: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -128,6 +134,7 @@ mod tests {
                 random_delay: None,
                 env: vec![],
                 no_notify: false,
+                env_from: None,
             },
         );
         let file = Sdtabfile {
@@ -151,6 +158,7 @@ mod tests {
                 description: None,
                 restart: Some("on-failure".to_string()),
                 env_file: Some("/home/user/.env".to_string()),
+                env_from: None,
                 memory_max: None,
                 cpu_quota: None,
                 io_weight: None,
@@ -187,6 +195,7 @@ mod tests {
                 description: None,
                 restart: Some("always".to_string()),
                 env_file: None,
+                env_from: None,
                 memory_max: None,
                 cpu_quota: None,
                 io_weight: None,
@@ -234,6 +243,7 @@ mod tests {
                 random_delay: None,
                 env: vec![],
                 no_notify: true,
+                env_from: None,
             },
         );
         let file = Sdtabfile {
@@ -265,6 +275,7 @@ mod tests {
                 random_delay: None,
                 env: vec![],
                 no_notify: false,
+                env_from: None,
             },
         );
         let file = Sdtabfile {
