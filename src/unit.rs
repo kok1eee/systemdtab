@@ -33,6 +33,12 @@ pub struct UnitConfig {
     pub memory_max: Option<String>,
     pub cpu_quota: Option<String>,
     pub io_weight: Option<String>,
+    /// systemd-oomd: ManagedOOMMemoryPressure (auto|kill). When "kill", oomd
+    /// kills this cgroup once its memory pressure exceeds the limit.
+    pub managed_oom_memory_pressure: Option<String>,
+    /// systemd-oomd: ManagedOOMSwap (auto|kill). When "kill", oomd kills this
+    /// cgroup once system swap usage exceeds SwapUsedLimit.
+    pub managed_oom_swap: Option<String>,
     pub timeout_stop: Option<String>,
     pub exec_start_pre: Option<String>,
     pub exec_stop_post: Option<String>,
@@ -254,6 +260,12 @@ fn generate_service_options(config: &UnitConfig) -> String {
     }
     if let Some(ref val) = config.io_weight {
         lines.push_str(&format!("IOWeight={}\n", val));
+    }
+    if let Some(ref val) = config.managed_oom_memory_pressure {
+        lines.push_str(&format!("ManagedOOMMemoryPressure={}\n", val));
+    }
+    if let Some(ref val) = config.managed_oom_swap {
+        lines.push_str(&format!("ManagedOOMSwap={}\n", val));
     }
     if let Some(ref val) = config.log_level_max {
         lines.push_str(&format!("LogLevelMax={}\n", val));
@@ -491,6 +503,28 @@ mod tests {
 
         let timer = generate_timer(&config);
         assert!(timer.contains("RandomizedDelaySec=5m"));
+    }
+
+    #[test]
+    fn test_managed_oom_directives() {
+        let config = UnitConfig {
+            name: "heavy".to_string(),
+            command: "./scrape.sh".to_string(),
+            workdir: "/home/user".to_string(),
+            description: "heavy scrape".to_string(),
+            cron_expr: Some("0 3 * * *".to_string()),
+            schedule: Some(CronSchedule {
+                on_calendar: Some("*-*-* 03:00:00".to_string()),
+                ..Default::default()
+            }),
+            managed_oom_memory_pressure: Some("kill".to_string()),
+            managed_oom_swap: Some("kill".to_string()),
+            ..Default::default()
+        };
+
+        let service = generate_service(&config);
+        assert!(service.contains("ManagedOOMMemoryPressure=kill"));
+        assert!(service.contains("ManagedOOMSwap=kill"));
     }
 
     #[test]

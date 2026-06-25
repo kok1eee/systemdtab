@@ -28,6 +28,12 @@ pub struct TimerEntry {
     pub cpu_quota: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub io_weight: Option<String>,
+    /// systemd-oomd ManagedOOMMemoryPressure (auto|kill) for this unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_oom_memory_pressure: Option<String>,
+    /// systemd-oomd ManagedOOMSwap (auto|kill) for this unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_oom_swap: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_stop: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -66,6 +72,12 @@ pub struct ServiceEntry {
     pub cpu_quota: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub io_weight: Option<String>,
+    /// systemd-oomd ManagedOOMMemoryPressure (auto|kill) for this unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_oom_memory_pressure: Option<String>,
+    /// systemd-oomd ManagedOOMSwap (auto|kill) for this unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_oom_swap: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_stop: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,6 +139,8 @@ mod tests {
                 memory_max: Some("512M".to_string()),
                 cpu_quota: None,
                 io_weight: None,
+                managed_oom_memory_pressure: None,
+                managed_oom_swap: None,
                 timeout_stop: None,
                 exec_start_pre: None,
                 exec_stop_post: None,
@@ -162,6 +176,8 @@ mod tests {
                 memory_max: None,
                 cpu_quota: None,
                 io_weight: None,
+                managed_oom_memory_pressure: None,
+                managed_oom_swap: None,
                 timeout_stop: None,
                 exec_start_pre: None,
                 exec_stop_post: None,
@@ -199,6 +215,8 @@ mod tests {
                 memory_max: None,
                 cpu_quota: None,
                 io_weight: None,
+                managed_oom_memory_pressure: None,
+                managed_oom_swap: None,
                 timeout_stop: None,
                 exec_start_pre: None,
                 exec_stop_post: None,
@@ -236,6 +254,8 @@ mod tests {
                 memory_max: None,
                 cpu_quota: None,
                 io_weight: None,
+                managed_oom_memory_pressure: None,
+                managed_oom_swap: None,
                 timeout_stop: None,
                 exec_start_pre: None,
                 exec_stop_post: None,
@@ -268,6 +288,8 @@ mod tests {
                 memory_max: None,
                 cpu_quota: None,
                 io_weight: None,
+                managed_oom_memory_pressure: None,
+                managed_oom_swap: None,
                 timeout_stop: None,
                 exec_start_pre: None,
                 exec_stop_post: None,

@@ -36,6 +36,12 @@ pub struct AddOptions {
     /// I/O weight: 1-10000 (default: 100, lower = less I/O)
     #[arg(long)]
     pub io_weight: Option<String>,
+    /// systemd-oomd memory-pressure kill policy for this unit (auto|kill)
+    #[arg(long)]
+    pub managed_oom_memory_pressure: Option<String>,
+    /// systemd-oomd swap-usage kill policy for this unit (auto|kill)
+    #[arg(long)]
+    pub managed_oom_swap: Option<String>,
     /// Timeout for stopping the process (e.g., 30s, 5m)
     #[arg(long)]
     pub timeout_stop: Option<String>,
@@ -67,6 +73,7 @@ pub struct AddOptions {
 
 pub fn run(opts: AddOptions) -> Result<()> {
     warn_cgroups_v2(&opts);
+    validate_managed_oom(&opts)?;
     let parsed = cron::parse(&opts.schedule)?;
     if parsed.is_service {
         run_service(opts)
@@ -78,12 +85,29 @@ pub fn run(opts: AddOptions) -> Result<()> {
 fn warn_cgroups_v2(opts: &AddOptions) {
     let needs_v2 = opts.memory_max.is_some()
         || opts.cpu_quota.is_some()
-        || opts.io_weight.is_some();
+        || opts.io_weight.is_some()
+        || opts.managed_oom_memory_pressure.is_some()
+        || opts.managed_oom_swap.is_some();
     if needs_v2 && !Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
         eprintln!("Warning: --memory-max, --cpu-quota, --io-weight require cgroups v2.");
         eprintln!("  cgroups v2 is not available on this system.");
         eprintln!("  Resource limits may be silently ignored.");
     }
+}
+
+/// systemd-oomd ManagedOOM* directives only accept "auto" or "kill".
+fn validate_managed_oom(opts: &AddOptions) -> Result<()> {
+    for (flag, val) in [
+        ("--managed-oom-memory-pressure", &opts.managed_oom_memory_pressure),
+        ("--managed-oom-swap", &opts.managed_oom_swap),
+    ] {
+        if let Some(v) = val {
+            if v != "auto" && v != "kill" {
+                bail!("Invalid {} '{}'. Must be 'auto' or 'kill'", flag, v);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
@@ -134,6 +158,8 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         memory_max: opts.memory_max,
         cpu_quota: opts.cpu_quota,
         io_weight: opts.io_weight,
+        managed_oom_memory_pressure: opts.managed_oom_memory_pressure,
+        managed_oom_swap: opts.managed_oom_swap,
         timeout_stop: opts.timeout_stop,
         exec_start_pre: opts.exec_start_pre,
         exec_stop_post: opts.exec_stop_post,
@@ -247,6 +273,8 @@ fn run_service(opts: AddOptions) -> Result<()> {
         memory_max: opts.memory_max,
         cpu_quota: opts.cpu_quota,
         io_weight: opts.io_weight,
+        managed_oom_memory_pressure: opts.managed_oom_memory_pressure,
+        managed_oom_swap: opts.managed_oom_swap,
         timeout_stop: opts.timeout_stop,
         exec_start_pre: opts.exec_start_pre,
         exec_stop_post: opts.exec_stop_post,

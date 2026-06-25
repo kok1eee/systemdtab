@@ -61,6 +61,8 @@ Some options require newer systemd versions:
 | `--memory-max` | systemd 244+ and cgroups v2 | `MemoryMax=` directive |
 | `--cpu-quota` | systemd 244+ and cgroups v2 | `CPUQuota=` directive |
 | `--io-weight` | systemd 247+ and cgroups v2 | `IOWeight=` directive |
+| `--managed-oom-memory-pressure` | systemd 250+ and systemd-oomd | `ManagedOOMMemoryPressure=` (`auto`/`kill`) |
+| `--managed-oom-swap` | systemd 250+ and systemd-oomd | `ManagedOOMSwap=` (`auto`/`kill`) |
 | `--log-level-max` | systemd 239+ | `LogLevelMax=` directive |
 
 > cgroups v2 is a kernel feature, not just a systemd version. Check with: `test -f /sys/fs/cgroup/cgroup.controllers && echo v2 || echo v1`
@@ -119,6 +121,7 @@ sdtab apply Sdtabfile.toml
 | `sdtab export [-o <file>]` | Export config as TOML |
 | `sdtab apply <file> [--prune] [--dry-run]` | Apply config from TOML |
 | `sdtab doctor` | Run health checks (linger, unit dir, systemctl, config, failed units) |
+| `sdtab oomd setup [--dry-run]` | Set up global systemd-oomd policy (oomd.conf thresholds, slice kill drop-ins, enable, runtime apply) |
 | `sdtab completions {bash\|zsh\|fish}` | Print shell completion script (dynamic unit-name completion) |
 
 > `sdtab remove` stops and disables the unit before deleting files. `sdtab apply --prune` only removes units with the `sdtab-` prefix — manually created systemd units are never touched.
@@ -165,6 +168,8 @@ Weekdays use English abbreviations (`@mon`, `@tue`, ..., `@sun`). Dates use Engl
 | `--memory-max <size>` | Memory limit (e.g. `512M`, `1G`) |
 | `--cpu-quota <percent>` | CPU limit (e.g. `50%`, `200%`) |
 | `--io-weight <N>` | I/O priority: 1-10000 (default: 100) |
+| `--managed-oom-memory-pressure <auto\|kill>` | systemd-oomd memory-pressure kill policy for this unit |
+| `--managed-oom-swap <auto\|kill>` | systemd-oomd swap-usage kill policy for this unit |
 | `--timeout-stop <duration>` | Stop timeout (e.g. `30s`) |
 | `--exec-start-pre <cmd>` | Command to run before ExecStart |
 | `--exec-stop-post <cmd>` | Command to run after process stops |

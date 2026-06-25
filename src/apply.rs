@@ -284,6 +284,8 @@ fn build_timer_config(name: &str, entry: &TimerEntry) -> Result<unit::UnitConfig
         memory_max: entry.memory_max.clone(),
         cpu_quota: entry.cpu_quota.clone(),
         io_weight: entry.io_weight.clone(),
+        managed_oom_memory_pressure: entry.managed_oom_memory_pressure.clone(),
+        managed_oom_swap: entry.managed_oom_swap.clone(),
         timeout_stop: entry.timeout_stop.clone(),
         exec_start_pre: entry.exec_start_pre.clone(),
         exec_stop_post: entry.exec_stop_post.clone(),
@@ -319,6 +321,8 @@ fn build_service_config(name: &str, entry: &ServiceEntry) -> Result<unit::UnitCo
         memory_max: entry.memory_max.clone(),
         cpu_quota: entry.cpu_quota.clone(),
         io_weight: entry.io_weight.clone(),
+        managed_oom_memory_pressure: entry.managed_oom_memory_pressure.clone(),
+        managed_oom_swap: entry.managed_oom_swap.clone(),
         timeout_stop: entry.timeout_stop.clone(),
         exec_start_pre: entry.exec_start_pre.clone(),
         exec_stop_post: entry.exec_stop_post.clone(),
@@ -350,6 +354,8 @@ fn service_needs_restart(current: &parse_unit::ParsedUnit, desired: &ServiceEntr
         || current.memory_max != desired.memory_max
         || current.cpu_quota != desired.cpu_quota
         || current.io_weight != desired.io_weight
+        || current.managed_oom_memory_pressure != desired.managed_oom_memory_pressure
+        || current.managed_oom_swap != desired.managed_oom_swap
         || current.timeout_stop != desired.timeout_stop
         || current.exec_start_pre != desired.exec_start_pre
         || current.exec_stop_post != desired.exec_stop_post
@@ -368,6 +374,8 @@ fn timer_matches(current: &parse_unit::ParsedUnit, desired: &TimerEntry) -> bool
         && current.memory_max == desired.memory_max
         && current.cpu_quota == desired.cpu_quota
         && current.io_weight == desired.io_weight
+        && current.managed_oom_memory_pressure == desired.managed_oom_memory_pressure
+        && current.managed_oom_swap == desired.managed_oom_swap
         && current.timeout_stop == desired.timeout_stop
         && current.exec_start_pre == desired.exec_start_pre
         && current.exec_stop_post == desired.exec_stop_post
@@ -389,6 +397,8 @@ fn service_matches(current: &parse_unit::ParsedUnit, desired: &ServiceEntry) -> 
         && current.memory_max == desired.memory_max
         && current.cpu_quota == desired.cpu_quota
         && current.io_weight == desired.io_weight
+        && current.managed_oom_memory_pressure == desired.managed_oom_memory_pressure
+        && current.managed_oom_swap == desired.managed_oom_swap
         && current.timeout_stop == desired.timeout_stop
         && current.exec_start_pre == desired.exec_start_pre
         && current.exec_stop_post == desired.exec_stop_post
@@ -507,6 +517,8 @@ workdir = "/home/user/app"
             memory_max: None,
             cpu_quota: None,
             io_weight: None,
+            managed_oom_memory_pressure: None,
+            managed_oom_swap: None,
             timeout_stop: None,
             exec_start_pre: None,
             exec_stop_post: None,
@@ -530,6 +542,8 @@ workdir = "/home/user/app"
             memory_max: None,
             cpu_quota: None,
             io_weight: None,
+            managed_oom_memory_pressure: None,
+            managed_oom_swap: None,
             timeout_stop: None,
             exec_start_pre: None,
             exec_stop_post: None,
@@ -551,6 +565,8 @@ workdir = "/home/user/app"
             memory_max: None,
             cpu_quota: None,
             io_weight: None,
+            managed_oom_memory_pressure: None,
+            managed_oom_swap: None,
             timeout_stop: None,
             exec_start_pre: None,
             exec_stop_post: None,
@@ -639,6 +655,8 @@ workdir = "/home/user/app"
             memory_max: p.memory_max.clone(),
             cpu_quota: p.cpu_quota.clone(),
             io_weight: p.io_weight.clone(),
+            managed_oom_memory_pressure: p.managed_oom_memory_pressure.clone(),
+            managed_oom_swap: p.managed_oom_swap.clone(),
             timeout_stop: p.timeout_stop.clone(),
             exec_start_pre: p.exec_start_pre.clone(),
             exec_stop_post: p.exec_stop_post.clone(),
@@ -660,6 +678,8 @@ workdir = "/home/user/app"
             memory_max: p.memory_max.clone(),
             cpu_quota: p.cpu_quota.clone(),
             io_weight: p.io_weight.clone(),
+            managed_oom_memory_pressure: p.managed_oom_memory_pressure.clone(),
+            managed_oom_swap: p.managed_oom_swap.clone(),
             timeout_stop: p.timeout_stop.clone(),
             exec_start_pre: p.exec_start_pre.clone(),
             exec_stop_post: p.exec_stop_post.clone(),
@@ -686,6 +706,8 @@ workdir = "/home/user/app"
             memory_max: Some("512M".to_string()),
             cpu_quota: Some("50%".to_string()),
             io_weight: Some("10".to_string()),
+            managed_oom_memory_pressure: Some("kill".to_string()),
+            managed_oom_swap: Some("kill".to_string()),
             timeout_stop: Some("30s".to_string()),
             exec_start_pre: Some("/bin/true".to_string()),
             exec_stop_post: Some("/bin/false".to_string()),
@@ -711,6 +733,8 @@ workdir = "/home/user/app"
             memory_max: Some("512M".to_string()),
             cpu_quota: Some("50%".to_string()),
             io_weight: Some("10".to_string()),
+            managed_oom_memory_pressure: Some("kill".to_string()),
+            managed_oom_swap: Some("kill".to_string()),
             timeout_stop: Some("30s".to_string()),
             exec_start_pre: Some("/bin/true".to_string()),
             exec_stop_post: Some("/bin/false".to_string()),
@@ -820,6 +844,8 @@ workdir = "/home/user/app"
             memory_max: Some("512M".to_string()),
             cpu_quota: Some("50%".to_string()),
             io_weight: Some("10".to_string()),
+            managed_oom_memory_pressure: Some("kill".to_string()),
+            managed_oom_swap: Some("kill".to_string()),
             timeout_stop: Some("30s".to_string()),
             exec_start_pre: Some("/bin/true".to_string()),
             exec_stop_post: Some("/bin/false".to_string()),
@@ -846,6 +872,8 @@ workdir = "/home/user/app"
             memory_max: Some("1G".to_string()),
             cpu_quota: Some("100%".to_string()),
             io_weight: Some("50".to_string()),
+            managed_oom_memory_pressure: Some("kill".to_string()),
+            managed_oom_swap: Some("kill".to_string()),
             timeout_stop: Some("60s".to_string()),
             exec_start_pre: Some("/bin/true".to_string()),
             exec_stop_post: Some("/bin/false".to_string()),

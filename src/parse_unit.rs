@@ -33,6 +33,8 @@ pub struct ParsedUnit {
     pub memory_max: Option<String>,
     pub cpu_quota: Option<String>,
     pub io_weight: Option<String>,
+    pub managed_oom_memory_pressure: Option<String>,
+    pub managed_oom_swap: Option<String>,
     pub timeout_stop: Option<String>,
     pub exec_start_pre: Option<String>,
     pub exec_stop_post: Option<String>,
@@ -139,6 +141,8 @@ pub fn parse_service_file(
     let mut memory_max = None;
     let mut cpu_quota = None;
     let mut io_weight = None;
+    let mut managed_oom_memory_pressure = None;
+    let mut managed_oom_swap = None;
     let mut timeout_stop = None;
     let mut exec_start_pre = None;
     let mut exec_stop_post = None;
@@ -214,6 +218,12 @@ pub fn parse_service_file(
         if let Some(val) = line.strip_prefix("IOWeight=") {
             io_weight = Some(val.to_string());
         }
+        if let Some(val) = line.strip_prefix("ManagedOOMMemoryPressure=") {
+            managed_oom_memory_pressure = Some(val.to_string());
+        }
+        if let Some(val) = line.strip_prefix("ManagedOOMSwap=") {
+            managed_oom_swap = Some(val.to_string());
+        }
         if let Some(val) = line.strip_prefix("TimeoutStopSec=") {
             timeout_stop = Some(val.to_string());
         }
@@ -267,6 +277,8 @@ pub fn parse_service_file(
         memory_max,
         cpu_quota,
         io_weight,
+        managed_oom_memory_pressure,
+        managed_oom_swap,
         timeout_stop,
         exec_start_pre,
         exec_stop_post,

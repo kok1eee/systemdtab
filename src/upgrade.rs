@@ -312,6 +312,8 @@ mod tests {
             memory_max: None,
             cpu_quota: None,
             io_weight: None,
+            managed_oom_memory_pressure: None,
+            managed_oom_swap: None,
             timeout_stop: None,
             exec_start_pre: None,
             exec_stop_post: None,

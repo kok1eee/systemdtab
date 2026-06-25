@@ -11,6 +11,7 @@ mod export;
 mod init;
 mod list;
 mod logs;
+mod oomd;
 mod parse_unit;
 mod remove;
 mod restart;
@@ -163,6 +164,11 @@ enum Commands {
     },
     /// Run health checks (linger, unit dir, systemctl, config, failed units)
     Doctor,
+    /// Manage global systemd-oomd policy (drop-ins + enable + runtime apply)
+    Oomd {
+        #[command(subcommand)]
+        cmd: oomd::OomdCommand,
+    },
     /// Generate shell completion script (bash/zsh/fish)
     ///
     /// Example: sdtab completions zsh > ~/.zsh/completions/_sdtab
@@ -204,6 +210,7 @@ fn run() -> Result<()> {
         Commands::Apply { file, prune, dry_run } => apply::run(&file, prune, dry_run)?,
         Commands::Upgrade { name, dry_run } => upgrade::run(name.as_deref(), dry_run)?,
         Commands::Doctor => doctor::run()?,
+        Commands::Oomd { cmd } => oomd::run(cmd)?,
         Commands::Completions { shell } => completions::run(shell)?,
         Commands::Names => completions::print_names()?,
     }
