@@ -11,8 +11,16 @@ use clap::Subcommand;
 /// Unit-level ManagedOOM* directives (set via `sdtab add --managed-oom-*`) only
 /// take effect once systemd-oomd is enabled and the enclosing slices opt in.
 /// `sdtab oomd setup` wires up that global policy in one idempotent command:
-/// oomd.conf thresholds, root-slice swap-kill, user app.slice / user@.service
-/// memory-pressure-kill, enables the daemon, and applies it to live cgroups.
+/// oomd.conf thresholds, plus memory-pressure-kill / swap-kill on the user's
+/// app.slice, enables the daemon, and applies it to live cgroups.
+///
+/// Design note — kill policies are scoped to the user's app.slice (where sdtab
+/// timers/services live) and user@.service, NOT the root slice. Interactive
+/// `session-N.scope` cgroups (terminals / Claude Code) sit under user-N.slice
+/// OUTSIDE user@.service, so they are never an oomd kill target. This prevents
+/// the collateral failure where a heavy batch fills RAM, pushes an idle session
+/// into swap, and a root-level swap-kill then kills the *session* instead of the
+/// batch (observed 2026-06-25).
 #[derive(Subcommand)]
 pub enum OomdCommand {
     /// Write global oomd drop-ins, enable systemd-oomd, and apply at runtime.
@@ -22,7 +30,7 @@ pub enum OomdCommand {
 
 #[derive(clap::Args)]
 pub struct SetupOptions {
-    /// Swap usage % that triggers oomd swap-kill on the root slice
+    /// Swap usage % that triggers oomd swap-kill within app.slice
     #[arg(long, default_value = "80%")]
     swap_used_limit: String,
     /// Memory pressure % limit before oomd kills the worst cgroup in a slice
@@ -37,7 +45,6 @@ pub struct SetupOptions {
 }
 
 const OOMD_CONF: &str = "/etc/systemd/oomd.conf.d/10-sdtab.conf";
-const ROOT_SLICE: &str = "/etc/systemd/system/-.slice.d/10-sdtab-oomd.conf";
 const USER_SERVICE: &str = "/etc/systemd/system/user@.service.d/10-sdtab-oomd.conf";
 
 pub fn run(cmd: OomdCommand) -> Result<()> {
@@ -68,14 +75,14 @@ fn setup(opts: SetupOptions) -> Result<()> {
         &opts.memory_pressure_limit,
         &opts.memory_pressure_duration,
     );
-    let root_slice = "[Slice]\nManagedOOMSwap=kill\n".to_string();
+    // user@.service: memory-pressure-kill (PID1-managed → survives reboot, covers
+    // app.slice). app.slice: both pressure-kill and swap-kill, scoped to batches.
     let user_service = "[Service]\nManagedOOMMemoryPressure=kill\n".to_string();
-    let app_slice = "[Slice]\nManagedOOMMemoryPressure=kill\n".to_string();
+    let app_slice = "[Slice]\nManagedOOMMemoryPressure=kill\nManagedOOMSwap=kill\n".to_string();
 
     // (path, content, is_system) — system files go to /etc and need sudo.
-    let files: [(&str, &String, bool); 4] = [
+    let files: [(&str, &String, bool); 3] = [
         (OOMD_CONF, &oomd_conf, true),
-        (ROOT_SLICE, &root_slice, true),
         (USER_SERVICE, &user_service, true),
         (user_app_slice.as_str(), &app_slice, false),
     ];
@@ -90,9 +97,10 @@ fn setup(opts: SetupOptions) -> Result<()> {
         println!("Then:");
         println!("  sudo systemctl daemon-reload && systemctl --user daemon-reload");
         println!("  sudo systemctl enable --now systemd-oomd");
-        println!("  sudo systemctl set-property --runtime -- -.slice ManagedOOMSwap=kill");
+        println!("  systemctl --user set-property --runtime app.slice ManagedOOMMemoryPressure=kill ManagedOOMSwap=kill");
         println!("  sudo systemctl set-property --runtime user@{}.service ManagedOOMMemoryPressure=kill", uid);
-        println!("  systemctl --user set-property --runtime app.slice ManagedOOMMemoryPressure=kill");
+        println!("\nNote: kill policies are scoped to app.slice / user@.service; interactive");
+        println!("sessions (outside user@.service) are never targeted.");
         return Ok(());
     }
 
@@ -114,21 +122,20 @@ fn setup(opts: SetupOptions) -> Result<()> {
 
     // Apply at runtime so already-active cgroups are monitored immediately
     // (daemon-reload alone does not rewrite the ManagedOOM xattr on live cgroups).
-    run_checked(Command::new("sudo").args([
-        "systemctl", "set-property", "--runtime", "--", "-.slice", "ManagedOOMSwap=kill",
+    run_checked(Command::new("systemctl").args([
+        "--user", "set-property", "--runtime", "app.slice",
+        "ManagedOOMMemoryPressure=kill", "ManagedOOMSwap=kill",
     ]))?;
     let user_svc = format!("user@{}.service", uid);
     run_checked(Command::new("sudo").args([
         "systemctl", "set-property", "--runtime", user_svc.as_str(), "ManagedOOMMemoryPressure=kill",
     ]))?;
-    run_checked(Command::new("systemctl").args([
-        "--user", "set-property", "--runtime", "app.slice", "ManagedOOMMemoryPressure=kill",
-    ]))?;
 
-    println!("\nsystemd-oomd is enabled and monitoring. Verify with: sudo oomctl");
+    println!("\nsystemd-oomd is enabled and monitoring app.slice. Verify with: sudo oomctl");
     println!(
-        "If you have older manual oomd drop-ins under other names (e.g. 10-amu.conf,\n\
-         10-oomd.conf), remove them to avoid duplicate policy."
+        "If you have older manual oomd drop-ins (e.g. 10-amu.conf, or a root-slice\n\
+         swap-kill at /etc/systemd/system/-.slice.d/10-oomd.conf), remove them — the\n\
+         root-slice swap-kill in particular can collaterally kill interactive sessions."
     );
     Ok(())
 }
