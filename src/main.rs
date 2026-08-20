@@ -50,11 +50,16 @@ enum Commands {
         #[arg(long)]
         slack_mention: Option<String>,
     },
-    /// Add a new timer or service
+    /// Add a new timer or service, syncing it into Sdtabfile.toml if that workflow is adopted
     ///
     /// sdtab add "<schedule>" "<command>"
     /// Use @service for persistent daemons: sdtab add "@service" "<command>"
     Add(add::AddOptions),
+    /// Add a new timer or service without touching Sdtabfile.toml (throwaway/experimental units)
+    ///
+    /// Same arguments as `add`. Use this when you don't want the unit promoted to the
+    /// declarative source of truth yet.
+    Draft(add::AddOptions),
     /// List all managed timers and services
     List {
         /// Output as JSON
@@ -195,6 +200,7 @@ fn run() -> Result<()> {
     match cli.command {
         Commands::Init { slack_webhook, slack_mention } => init::run(slack_webhook.as_deref(), slack_mention.as_deref())?,
         Commands::Add(opts) => add::run(opts)?,
+        Commands::Draft(opts) => add::run_no_sync(opts)?,
         Commands::List { json, sort } => list::run(json, sort)?,
         Commands::Remove { name } => remove::run(&name)?,
         Commands::Edit { name } => edit::run(&name)?,

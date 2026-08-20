@@ -177,6 +177,12 @@ pub fn config_dir() -> Result<String> {
     Ok(format!("{}/.config/sdtab", home))
 }
 
+/// Default location of the declarative Sdtabfile.toml, if the user has adopted that workflow.
+pub fn default_sdtabfile_path() -> Result<String> {
+    let config = config_dir()?;
+    Ok(format!("{}/Sdtabfile.toml", config))
+}
+
 pub fn global_env_path() -> Result<String> {
     let config = config_dir()?;
     Ok(format!("{}/env", config))

@@ -1,10 +1,26 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use crate::init;
 use crate::parse_unit;
 use crate::sdtabfile::{self, Sdtabfile, ServiceEntry, TimerEntry};
+
+/// If the user has adopted the declarative Sdtabfile.toml workflow (the file already
+/// exists at the default path), keep it in sync with the current live state.
+/// Silently does nothing if the file hasn't been created yet, so `add`/`remove` don't
+/// force the TOML workflow on users who only use imperative commands.
+pub fn sync_default_if_adopted() -> Result<()> {
+    let path = init::default_sdtabfile_path()?;
+    if !Path::new(&path).exists() {
+        return Ok(());
+    }
+    run(Some(&path))?;
+    println!("Synced: {} (Sdtabfile.toml kept in sync with live state)", path);
+    Ok(())
+}
 
 pub fn run(output: Option<&str>) -> Result<()> {
     let units = parse_unit::scan_all_units()?;

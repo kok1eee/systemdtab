@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 
-use crate::{init, systemctl, unit};
+use crate::{export, init, systemctl, unit};
 
 pub fn run(name: &str) -> Result<()> {
     let unit_dir = init::unit_dir()?;
@@ -46,6 +46,8 @@ pub fn run(name: &str) -> Result<()> {
 
     let unit_type = if is_timer { "Timer" } else { "Service" };
     println!("{} '{}' has been removed.", unit_type, name);
+
+    export::sync_default_if_adopted()?;
 
     Ok(())
 }

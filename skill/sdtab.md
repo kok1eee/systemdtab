@@ -20,9 +20,10 @@ $ARGUMENTS でサブコマンドを指定。省略時は一覧表示。
 例:
 - `/sdtab` → 一覧表示
 - `/sdtab 毎朝9時にreport.pyを実行して` → 自然言語でタイマー追加
-- `/sdtab add "*/5 * * * *" "./sync.sh"` → タイマー追加
+- `/sdtab add "*/5 * * * *" "./sync.sh"` → タイマー追加（Sdtabfile.toml 運用時は自動で正本に同期）
 - `/sdtab add "@service" "node server.js"` → 常駐サービス追加
-- `/sdtab remove sync` → タイマー削除
+- `/sdtab draft "*/5 * * * *" "./sync.sh"` → タイマー追加（正本には触らない、使い捨て・試作用）
+- `/sdtab remove sync` → タイマー削除（正本に同期している場合は正本からも消える）
 - `/sdtab status` → 全タイマー・サービスの状態確認
 - `/sdtab export` → 現在の設定を TOML 出力
 - `/sdtab apply Sdtabfile.toml` → TOML から一括反映
@@ -59,6 +60,18 @@ sdtab add "<schedule>" "<command>" --name <name> --workdir <workdir>
 - `@service` の場合: `--restart`, `--env-file` も指定可能
 
 追加後、`sdtab list` で結果を表示。
+
+#### Sdtabfile.toml との同期
+
+`~/.config/sdtab/Sdtabfile.toml`（正本・宣言的な設定ファイル、通常 dotfiles 等で管理）が既に存在する環境では、`sdtab add` / `sdtab remove` は成功時に自動で `sdtab export` を実行し、正本を live 状態に同期する。正本ファイルがまだ無い環境では何もしない（TOML運用を強制しない）。
+
+これは元々「add しただけでは正本に載らず、後で誰かが `sdtab apply --prune` すると正本に無いユニットだけ削除される」という事故が実際に起きたための対策。正本運用をしている環境では、add/remove するだけで正本も一緒に更新される。
+
+**「正本を汚さずに一時的に試したい」場合は `sdtab add` の代わりに `sdtab draft` を使う**（引数は `add` と同一。unit は作るが Sdtabfile.toml には一切触れない）。使い捨てや検証用の timer/service はこちらで作り、本採用が決まったら:
+1. `sdtab remove <name>` で draft のユニットを消す
+2. 同じ内容で `sdtab add` し直す（正本に同期される）
+
+あるいは draft のまま残して後で `sdtab export -o Sdtabfile.toml` で一括反映してもよい。
 
 #### インラインモード（推奨パターン）
 
@@ -116,7 +129,7 @@ sdtab logs <name> -p err   # エラー以上のみ
 sdtab remove <name>
 ```
 
-削除後、`sdtab list` で残りの一覧を表示。
+削除後、`sdtab list` で残りの一覧を表示。正本ファイルが存在する環境では、削除も自動で正本に同期される（`add` と同様）。
 
 ### $ARGUMENTS が "status" の場合
 

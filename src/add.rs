@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 
-use crate::{config, cron, init, systemctl, unit};
+use crate::{config, cron, export, init, systemctl, unit};
 
 #[derive(Args)]
 pub struct AddOptions {
@@ -71,14 +71,25 @@ pub struct AddOptions {
     pub dry_run: bool,
 }
 
+/// Add a unit and sync it into Sdtabfile.toml if the declarative workflow is adopted.
 pub fn run(opts: AddOptions) -> Result<()> {
+    run_impl(opts, true)
+}
+
+/// Add a unit without touching Sdtabfile.toml (original imperative-only behavior).
+/// Useful for throwaway/experimental units you don't want to promote to the source of truth yet.
+pub fn run_no_sync(opts: AddOptions) -> Result<()> {
+    run_impl(opts, false)
+}
+
+fn run_impl(opts: AddOptions, sync: bool) -> Result<()> {
     warn_cgroups_v2(&opts);
     validate_managed_oom(&opts)?;
     let parsed = cron::parse(&opts.schedule)?;
     if parsed.is_service {
-        run_service(opts)
+        run_service(opts, sync)
     } else {
-        run_timer(opts, parsed)
+        run_timer(opts, parsed, sync)
     }
 }
 
@@ -110,7 +121,7 @@ fn validate_managed_oom(opts: &AddOptions) -> Result<()> {
     Ok(())
 }
 
-fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
+fn run_timer(opts: AddOptions, parsed: cron::CronSchedule, sync: bool) -> Result<()> {
     if let Some(ref path) = opts.env_file {
         if !Path::new(path).exists() {
             bail!("Environment file not found: {}", path);
@@ -215,10 +226,14 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule) -> Result<()> {
         }
     }
 
+    if sync {
+        export::sync_default_if_adopted()?;
+    }
+
     Ok(())
 }
 
-fn run_service(opts: AddOptions) -> Result<()> {
+fn run_service(opts: AddOptions, sync: bool) -> Result<()> {
     let dry_run = opts.dry_run;
     let no_notify = opts.no_notify;
 
@@ -312,6 +327,10 @@ fn run_service(opts: AddOptions) -> Result<()> {
     println!("  Restart: {}", restart_display);
     if let Some(ref ef) = opts.env_file {
         println!("  EnvFile: {}", ef);
+    }
+
+    if sync {
+        export::sync_default_if_adopted()?;
     }
 
     Ok(())
