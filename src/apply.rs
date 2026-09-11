@@ -271,6 +271,8 @@ fn build_timer_config(name: &str, entry: &TimerEntry) -> Result<unit::UnitConfig
         None
     };
     let on_failure = resolve_on_failure(entry.no_notify)?;
+    let (exec_start_pre, original_exec_start_pre) = init::resolve_optional_exec(&entry.exec_start_pre)?;
+    let (exec_stop_post, original_exec_stop_post) = init::resolve_optional_exec(&entry.exec_stop_post)?;
 
     Ok(unit::UnitConfig {
         name: name.to_string(),
@@ -287,12 +289,14 @@ fn build_timer_config(name: &str, entry: &TimerEntry) -> Result<unit::UnitConfig
         managed_oom_memory_pressure: entry.managed_oom_memory_pressure.clone(),
         managed_oom_swap: entry.managed_oom_swap.clone(),
         timeout_stop: entry.timeout_stop.clone(),
-        exec_start_pre: entry.exec_start_pre.clone(),
-        exec_stop_post: entry.exec_stop_post.clone(),
+        exec_start_pre,
+        exec_stop_post,
         log_level_max: entry.log_level_max.clone(),
         random_delay: entry.random_delay.clone(),
         env: entry.env.clone(),
         original_command,
+        original_exec_start_pre,
+        original_exec_stop_post,
         on_failure,
         no_notify: entry.no_notify,
         env_from: entry.env_from.clone(),
@@ -308,6 +312,8 @@ fn build_service_config(name: &str, entry: &ServiceEntry) -> Result<unit::UnitCo
         None
     };
     let on_failure = resolve_on_failure(entry.no_notify)?;
+    let (exec_start_pre, original_exec_start_pre) = init::resolve_optional_exec(&entry.exec_start_pre)?;
+    let (exec_stop_post, original_exec_stop_post) = init::resolve_optional_exec(&entry.exec_stop_post)?;
 
     Ok(unit::UnitConfig {
         name: name.to_string(),
@@ -324,12 +330,14 @@ fn build_service_config(name: &str, entry: &ServiceEntry) -> Result<unit::UnitCo
         managed_oom_memory_pressure: entry.managed_oom_memory_pressure.clone(),
         managed_oom_swap: entry.managed_oom_swap.clone(),
         timeout_stop: entry.timeout_stop.clone(),
-        exec_start_pre: entry.exec_start_pre.clone(),
-        exec_stop_post: entry.exec_stop_post.clone(),
+        exec_start_pre,
+        exec_stop_post,
         log_level_max: entry.log_level_max.clone(),
         random_delay: None,
         env: entry.env.clone(),
         original_command,
+        original_exec_start_pre,
+        original_exec_stop_post,
         on_failure,
         no_notify: entry.no_notify,
         env_from: entry.env_from.clone(),
@@ -853,6 +861,8 @@ workdir = "/home/user/app"
             random_delay: Some("5m".to_string()),
             env: vec!["FOO=bar".to_string(), "BAZ=qux".to_string()],
             original_command: Some("echo hello".to_string()),
+            original_exec_start_pre: None,
+            original_exec_stop_post: None,
             on_failure: Some("sdtab-notify@%n.service".to_string()),
             no_notify: false,
             env_from: None,
@@ -881,6 +891,8 @@ workdir = "/home/user/app"
             random_delay: None,
             env: vec!["NODE_ENV=production".to_string()],
             original_command: Some("node index.js".to_string()),
+            original_exec_start_pre: None,
+            original_exec_stop_post: None,
             on_failure: Some("sdtab-notify@%n.service".to_string()),
             no_notify: false,
             env_from: None,
@@ -914,6 +926,29 @@ workdir = "/home/user/app"
         assert_eq!(parsed.random_delay, config.random_delay, "random_delay");
         assert_eq!(parsed.env, config.env, "env");
         assert_eq!(parsed.no_notify, config.no_notify, "no_notify");
+    }
+
+    #[test]
+    fn test_roundtrip_timer_exec_start_pre_survives_resolve() {
+        // Regression test for the bug where resolve_command()'ing
+        // exec_start_pre without an original_exec_start_pre metadata
+        // mechanism made timer_matches() always report "changed" (current
+        // = resolved full path, desired = raw Sdtabfile.toml value).
+        let mut config = make_full_timer_config();
+        config.exec_start_pre = Some("/home/user/.local/bin/ssmm exec -- true".to_string());
+        config.original_exec_start_pre = Some("ssmm exec -- true".to_string());
+
+        let service_str = unit::generate_service(&config);
+        let timer_str = unit::generate_timer(&config);
+        let global_env = init::global_env_path().unwrap_or_default();
+        let parsed = parse_unit::parse_service_file(
+            "roundtrip", &service_str, Some(&timer_str), &global_env,
+        );
+
+        // parsed.exec_start_pre must recover the raw value ("ssmm exec --
+        // true"), matching what a TimerEntry.exec_start_pre in
+        // Sdtabfile.toml would hold — not the resolved full path.
+        assert_eq!(parsed.exec_start_pre, Some("ssmm exec -- true".to_string()));
     }
 
     #[test]

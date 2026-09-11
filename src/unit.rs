@@ -46,6 +46,13 @@ pub struct UnitConfig {
     pub random_delay: Option<String>,
     pub env: Vec<String>,
     pub original_command: Option<String>,
+    /// Raw exec_start_pre before resolve_command() path resolution.
+    /// When set, embedded as `# sdtab:exec-start-pre=<raw>` so a later
+    /// re-parse recovers the original (unresolved) value instead of the
+    /// resolved full path baked into ExecStartPre=.
+    pub original_exec_start_pre: Option<String>,
+    /// Same as `original_exec_start_pre` but for exec_stop_post.
+    pub original_exec_stop_post: Option<String>,
     pub on_failure: Option<String>,
     pub no_notify: bool,
 }
@@ -56,6 +63,14 @@ pub fn generate_service(config: &UnitConfig) -> String {
     let global_env = global_env_line();
     let command_meta = match &config.original_command {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
+        None => String::new(),
+    };
+    let exec_start_pre_meta = match &config.original_exec_start_pre {
+        Some(cmd) => format!("# sdtab:exec-start-pre={}\n", cmd),
+        None => String::new(),
+    };
+    let exec_stop_post_meta = match &config.original_exec_stop_post {
+        Some(cmd) => format!("# sdtab:exec-stop-post={}\n", cmd),
         None => String::new(),
     };
     let env_from_meta = match &config.env_from {
@@ -81,6 +96,8 @@ pub fn generate_service(config: &UnitConfig) -> String {
          # sdtab:template_version={template_version}\n\
          # sdtab:cron={cron}\n\
          {command_meta}\
+         {exec_start_pre_meta}\
+         {exec_stop_post_meta}\
          {env_from_meta}\
          {no_notify_meta}\
          [Unit]\n\
@@ -98,6 +115,8 @@ pub fn generate_service(config: &UnitConfig) -> String {
         template_version = TEMPLATE_VERSION,
         cron = cron,
         command_meta = command_meta,
+        exec_start_pre_meta = exec_start_pre_meta,
+        exec_stop_post_meta = exec_stop_post_meta,
         env_from_meta = env_from_meta,
         no_notify_meta = no_notify_meta,
         name = config.name,
@@ -119,6 +138,14 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
     let restart_meta = format!("# sdtab:restart={}\n", restart);
     let command_meta = match &config.original_command {
         Some(cmd) => format!("# sdtab:command={}\n", cmd),
+        None => String::new(),
+    };
+    let exec_start_pre_meta = match &config.original_exec_start_pre {
+        Some(cmd) => format!("# sdtab:exec-start-pre={}\n", cmd),
+        None => String::new(),
+    };
+    let exec_stop_post_meta = match &config.original_exec_stop_post {
+        Some(cmd) => format!("# sdtab:exec-stop-post={}\n", cmd),
         None => String::new(),
     };
     let env_from_meta = match &config.env_from {
@@ -149,6 +176,8 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
          # sdtab:template_version={template_version}\n\
          {restart_meta}\
          {command_meta}\
+         {exec_start_pre_meta}\
+         {exec_stop_post_meta}\
          {env_from_meta}\
          {no_notify_meta}\
          [Unit]\n\
@@ -174,6 +203,8 @@ pub fn generate_daemon_service(config: &UnitConfig) -> String {
         template_version = TEMPLATE_VERSION,
         restart_meta = restart_meta,
         command_meta = command_meta,
+        exec_start_pre_meta = exec_start_pre_meta,
+        exec_stop_post_meta = exec_stop_post_meta,
         env_from_meta = env_from_meta,
         no_notify_meta = no_notify_meta,
         name = config.name,
@@ -380,6 +411,48 @@ mod tests {
         assert!(service.contains("SyslogIdentifier=sdtab-report"));
         // template_version stamp lets sdtab detect legacy units
         assert!(service.contains(&format!("# sdtab:template_version={}", TEMPLATE_VERSION)));
+    }
+
+    #[test]
+    fn test_timer_exec_start_pre_stop_post_metadata() {
+        let config = UnitConfig {
+            name: "report".to_string(),
+            command: "/usr/bin/echo done".to_string(),
+            workdir: "/home/user/project".to_string(),
+            description: "daily report".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            exec_start_pre: Some("/home/user/.local/bin/ssmm exec -- true".to_string()),
+            exec_stop_post: Some("/home/user/.local/bin/ssmm exec -- true".to_string()),
+            original_exec_start_pre: Some("ssmm exec -- true".to_string()),
+            original_exec_stop_post: Some("ssmm exec -- true".to_string()),
+            ..Default::default()
+        };
+
+        let service = generate_service(&config);
+        assert!(service.contains("# sdtab:exec-start-pre=ssmm exec -- true"));
+        assert!(service.contains("# sdtab:exec-stop-post=ssmm exec -- true"));
+        assert!(service.contains("ExecStartPre=/home/user/.local/bin/ssmm exec -- true"));
+        assert!(service.contains("ExecStopPost=/home/user/.local/bin/ssmm exec -- true"));
+    }
+
+    #[test]
+    fn test_timer_no_exec_start_pre_metadata_when_unresolved() {
+        // When exec_start_pre didn't need resolving (already a full path),
+        // no metadata comment should be emitted.
+        let config = UnitConfig {
+            name: "report".to_string(),
+            command: "/usr/bin/echo done".to_string(),
+            workdir: "/home/user/project".to_string(),
+            description: "daily report".to_string(),
+            cron_expr: Some("0 9 * * *".to_string()),
+            exec_start_pre: Some("/bin/true".to_string()),
+            original_exec_start_pre: None,
+            ..Default::default()
+        };
+
+        let service = generate_service(&config);
+        assert!(!service.contains("# sdtab:exec-start-pre="));
+        assert!(service.contains("ExecStartPre=/bin/true"));
     }
 
     #[test]

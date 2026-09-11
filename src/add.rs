@@ -155,6 +155,8 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule, sync: bool) -> Result
     };
 
     let on_failure = resolve_on_failure(no_notify)?;
+    let (exec_start_pre, original_exec_start_pre) = init::resolve_optional_exec(&opts.exec_start_pre)?;
+    let (exec_stop_post, original_exec_stop_post) = init::resolve_optional_exec(&opts.exec_stop_post)?;
 
     let config = unit::UnitConfig {
         name: name.clone(),
@@ -172,12 +174,14 @@ fn run_timer(opts: AddOptions, parsed: cron::CronSchedule, sync: bool) -> Result
         managed_oom_memory_pressure: opts.managed_oom_memory_pressure,
         managed_oom_swap: opts.managed_oom_swap,
         timeout_stop: opts.timeout_stop,
-        exec_start_pre: opts.exec_start_pre,
-        exec_stop_post: opts.exec_stop_post,
+        exec_start_pre,
+        exec_stop_post,
         log_level_max: opts.log_level_max,
         random_delay: opts.random_delay,
         env: opts.env,
         original_command,
+        original_exec_start_pre,
+        original_exec_stop_post,
         on_failure,
         no_notify,
         env_from: opts.env_from,
@@ -275,6 +279,8 @@ fn run_service(opts: AddOptions, sync: bool) -> Result<()> {
     };
 
     let on_failure = resolve_on_failure(no_notify)?;
+    let (exec_start_pre, original_exec_start_pre) = init::resolve_optional_exec(&opts.exec_start_pre)?;
+    let (exec_stop_post, original_exec_stop_post) = init::resolve_optional_exec(&opts.exec_stop_post)?;
 
     let config = unit::UnitConfig {
         name: name.clone(),
@@ -291,12 +297,14 @@ fn run_service(opts: AddOptions, sync: bool) -> Result<()> {
         managed_oom_memory_pressure: opts.managed_oom_memory_pressure,
         managed_oom_swap: opts.managed_oom_swap,
         timeout_stop: opts.timeout_stop,
-        exec_start_pre: opts.exec_start_pre,
-        exec_stop_post: opts.exec_stop_post,
+        exec_start_pre,
+        exec_stop_post,
         log_level_max: opts.log_level_max,
         random_delay: None, // timer only
         env: opts.env,
         original_command,
+        original_exec_start_pre,
+        original_exec_stop_post,
         on_failure,
         no_notify,
         env_from: opts.env_from,

@@ -134,6 +134,8 @@ pub fn parse_service_file(
     let mut cron_expr = None;
     let mut command = String::new();
     let mut original_command: Option<String> = None;
+    let mut original_exec_start_pre: Option<String> = None;
+    let mut original_exec_stop_post: Option<String> = None;
     let mut workdir = String::new();
     let mut description = String::new();
     let mut restart_policy = None;
@@ -170,6 +172,12 @@ pub fn parse_service_file(
         }
         if let Some(val) = line.strip_prefix("# sdtab:command=") {
             original_command = Some(val.to_string());
+        }
+        if let Some(val) = line.strip_prefix("# sdtab:exec-start-pre=") {
+            original_exec_start_pre = Some(val.to_string());
+        }
+        if let Some(val) = line.strip_prefix("# sdtab:exec-stop-post=") {
+            original_exec_stop_post = Some(val.to_string());
         }
         if line == "# sdtab:no-notify=true" {
             no_notify = true;
@@ -264,6 +272,17 @@ pub fn parse_service_file(
         command = short;
     }
 
+    // Use original_exec_start_pre/original_exec_stop_post if available, so
+    // that re-parsing a unit file recovers the raw (unresolved) value that
+    // matches Sdtabfile.toml, instead of the resolve_command()'d full path
+    // baked into ExecStartPre=/ExecStopPost=.
+    if let Some(orig) = original_exec_start_pre {
+        exec_start_pre = Some(orig);
+    }
+    if let Some(orig) = original_exec_stop_post {
+        exec_stop_post = Some(orig);
+    }
+
     ParsedUnit {
         name: name.to_string(),
         unit_type,
@@ -321,6 +340,51 @@ CPUQuota=50%
         assert_eq!(parsed.memory_max, Some("512M".to_string()));
         assert_eq!(parsed.cpu_quota, Some("50%".to_string()));
         assert!(parsed.env_file.is_none());
+    }
+
+    #[test]
+    fn parse_recovers_raw_exec_start_pre_from_metadata() {
+        // ExecStartPre= holds the resolve_command()'d full path, but the
+        // # sdtab:exec-start-pre= comment holds the raw Sdtabfile.toml value.
+        // Re-parsing must recover the raw value so it round-trips with
+        // TimerEntry.exec_start_pre (fixes the "always shows changed" bug).
+        let service = "\
+# sdtab:type=timer
+# sdtab:cron=0 9 * * *
+# sdtab:exec-start-pre=ssmm exec -- true
+[Unit]
+Description=[sdtab] report: daily report
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/echo done
+WorkingDirectory=/home/user/project
+ExecStartPre=/home/user/.local/bin/ssmm exec -- true
+";
+
+        let parsed = parse_service_file("report", service, None, "/home/user/.config/sdtab/env");
+        assert_eq!(parsed.exec_start_pre, Some("ssmm exec -- true".to_string()));
+    }
+
+    #[test]
+    fn parse_falls_back_to_raw_exec_start_pre_without_metadata() {
+        // No # sdtab:exec-start-pre= comment (e.g. legacy unit or value that
+        // didn't need resolving) → ExecStartPre= is used as-is.
+        let service = "\
+# sdtab:type=timer
+# sdtab:cron=0 9 * * *
+[Unit]
+Description=[sdtab] report: daily report
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/echo done
+WorkingDirectory=/home/user/project
+ExecStartPre=/bin/true
+";
+
+        let parsed = parse_service_file("report", service, None, "/home/user/.config/sdtab/env");
+        assert_eq!(parsed.exec_start_pre, Some("/bin/true".to_string()));
     }
 
     #[test]

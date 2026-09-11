@@ -262,3 +262,17 @@ pub fn resolve_command(command: &str) -> Result<String> {
         global_env_path().unwrap_or_default()
     )
 }
+
+/// Resolve an optional exec_start_pre/exec_stop_post command to its full-path
+/// form, returning both the resolved value and (if it changed from the raw
+/// input) the raw original for round-tripping through
+/// `# sdtab:exec-start-pre=`/`# sdtab:exec-stop-post=` metadata comments
+/// (mirrors the `command`/`original_command` pair).
+pub fn resolve_optional_exec(raw: &Option<String>) -> Result<(Option<String>, Option<String>)> {
+    let Some(raw) = raw else {
+        return Ok((None, None));
+    };
+    let resolved = resolve_command(raw)?;
+    let original = if resolved != *raw { Some(raw.clone()) } else { None };
+    Ok((Some(resolved), original))
+}
