@@ -145,6 +145,8 @@ Standard cron expressions and convenient shortcuts:
 | `@daily/9` | Daily at 9:00 |
 | `@daily/9:30` | Daily at 9:30 |
 | `@hourly` | Once an hour |
+| `@hourly/8-21` | Every hour, limited to 8:00-21:00 |
+| `@manual` | Manual trigger only (effectively never fires via cron) |
 | `@reboot` | On system boot |
 | `@mon/13` | Every Monday at 13:00 |
 | `@tue/18` | Every Tuesday at 18:00 |

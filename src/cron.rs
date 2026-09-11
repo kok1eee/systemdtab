@@ -103,6 +103,15 @@ fn parse_special(expr: &str) -> Option<CronSchedule> {
             is_service: false,
             display: Some("@hourly".to_string()),
         }),
+        "@manual" => Some(CronSchedule {
+            // 手動起動専用。cronでは実質発火しない（年1回1/1 3:00に固定）。
+            // amu-gas-bridge等からの sdtab run / 手動 systemctl start でのみ
+            // 使われることを想定したユニット向け（旧 "?" 記法の後継）。
+            on_calendar: Some("*-01-01 03:00:00".to_string()),
+            on_boot_sec: None,
+            is_service: false,
+            display: Some("@manual".to_string()),
+        }),
         "@reboot" => Some(CronSchedule {
             on_calendar: None,
             on_boot_sec: Some("1min".to_string()),
@@ -215,6 +224,22 @@ fn parse_extended(expr: &str) -> Result<Option<CronSchedule>> {
         }));
     }
 
+    // @hourly/N-M: 時間帯限定の毎時実行（例: @hourly/8-21 は毎時8-21時の0分に発火）。
+    // 標準cron "0 N-M * * *" と同じ動作を直感的に書けるようにする糖衣構文。
+    if keyword == "@hourly" {
+        if parts.len() != 2 {
+            bail!("Invalid @hourly syntax. Use: @hourly/8-21");
+        }
+        let (start, end) = parse_hour_range(parts[1])?;
+        let display = format!("@hourly/{}-{}", start, end);
+        return Ok(Some(CronSchedule {
+            on_calendar: Some(format!("*-*-* {}..{}:00:00", start, end)),
+            on_boot_sec: None,
+            is_service: false,
+            display: Some(display),
+        }));
+    }
+
     // @weekly/dow/HH or @weekly/dow/HH:MM
     if keyword == "@weekly" {
         if parts.len() != 3 {
@@ -286,6 +311,26 @@ fn parse_extended(expr: &str) -> Result<Option<CronSchedule>> {
     }
 
     Ok(None)
+}
+
+/// Parse hour range for @hourly/N-M: "8-21" -> (8, 21)
+fn parse_hour_range(s: &str) -> Result<(u32, u32)> {
+    let (start_str, end_str) = s
+        .split_once('-')
+        .ok_or_else(|| anyhow::anyhow!("Invalid @hourly range: {}. Use: @hourly/8-21", s))?;
+    let start: u32 = start_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid hour: {}", start_str))?;
+    let end: u32 = end_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid hour: {}", end_str))?;
+    if start > 23 || end > 23 {
+        bail!("Hour must be 0-23");
+    }
+    if start > end {
+        bail!("Invalid @hourly range: start ({}) must be <= end ({})", start, end);
+    }
+    Ok((start, end))
 }
 
 /// Parse time specification: "9" -> (9, 0), "9:30" -> (9, 30)
@@ -584,6 +629,12 @@ mod tests {
     }
 
     #[test]
+    fn special_manual() {
+        assert_eq!(cal("@manual"), "*-01-01 03:00:00");
+        assert_eq!(display("@manual"), "@manual");
+    }
+
+    #[test]
     fn special_reboot() {
         let result = parse("@reboot").unwrap();
         assert!(result.on_calendar.is_none());
@@ -633,6 +684,30 @@ mod tests {
     fn extended_daily_zero_minute() {
         assert_eq!(cal("@daily/9:00"), "*-*-* 09:00:00");
         assert_eq!(display("@daily/9:00"), "@daily/9"); // normalized to no :00
+    }
+
+    #[test]
+    fn extended_hourly_range() {
+        assert_eq!(cal("@hourly/8-21"), "*-*-* 8..21:00:00");
+        assert_eq!(display("@hourly/8-21"), "@hourly/8-21");
+    }
+
+    #[test]
+    fn extended_hourly_range_matches_standard_cron() {
+        // @hourly/N-M は標準cron "0 N-M * * *" と同じ on_calendar を生成する
+        assert_eq!(cal("@hourly/8-21"), cal("0 8-21 * * *"));
+    }
+
+    #[test]
+    fn error_hourly_range_out_of_bounds() {
+        let err = parse("@hourly/8-25").unwrap_err();
+        assert!(err.to_string().contains("Hour must be 0-23"));
+    }
+
+    #[test]
+    fn error_hourly_range_reversed() {
+        let err = parse("@hourly/21-8").unwrap_err();
+        assert!(err.to_string().contains("must be <="));
     }
 
     #[test]
