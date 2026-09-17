@@ -36,7 +36,7 @@ pub fn run(
     if let Some(ref prio) = priority {
         cmd.args(["-p", prio]);
     }
-    if let Some(ref s) = since {
+    if let Some(s) = since {
         cmd.args(["--since", s]);
     }
 

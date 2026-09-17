@@ -264,7 +264,7 @@ fn build_exec_start(config: &UnitConfig) -> String {
     match config.env_from.as_deref() {
         Some("ssmm") => {
             let ssmm_bin = init::resolve_command("ssmm")
-                .map(|s| s.splitn(2, ' ').next().unwrap_or("ssmm").to_string())
+                .map(|s| s.split(' ').next().unwrap_or("ssmm").to_string())
                 .unwrap_or_else(|_| "ssmm".to_string());
             format!("{} exec -- {}", ssmm_bin, config.command)
         }
